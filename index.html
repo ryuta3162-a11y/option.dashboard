@@ -1,978 +1,562 @@
 <!DOCTYPE html>
-<html lang="ja">
+<html lang="ja" class="dark">
 <head>
-    <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>店舗売上・オプション分析ダッシュボード</title>
-    <!-- Tailwind CSS (デザイン用) -->
-    <script src="https://cdn.tailwindcss.com"></script>
-    <!-- Noto Sans JP Font -->
-    <link href="https://fonts.googleapis.com/css2?family=Noto+Sans+JP:wght@400;500;700;900&display=swap" rel="stylesheet">
-    <style>
-        body { font-family: 'Noto Sans JP', sans-serif; }
-        
-        /* カスタムスクロールバー */
-        ::-webkit-scrollbar {
-            width: 8px;
-            height: 8px;
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <base target="_top">
+  
+  <!-- Tailwind CSS -->
+  <script src="https://cdn.tailwindcss.com"></script>
+  <!-- Chart.js -->
+  <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+  <!-- Google Fonts: Inter & Noto Sans JP -->
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;600;700&family=Noto+Sans+JP:wght@400;500;700&display=swap" rel="stylesheet">
+  <!-- Icons -->
+  <link href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css" rel="stylesheet">
+
+  <script>
+    tailwind.config = {
+      darkMode: 'class',
+      theme: {
+        extend: {
+          fontFamily: {
+            sans: ['Noto Sans JP', 'Inter', 'sans-serif'],
+            mono: ['ui-monospace', 'SFMono-Regular', 'Menlo', 'monospace'],
+          },
+          colors: {
+            background: '#09090b',
+            surface: '#18181b',
+            border: '#27272a',
+            primary: '#fafafa',
+            secondary: '#a1a1aa',
+          }
         }
-        ::-webkit-scrollbar-track {
-            background: #f1f5f9; 
-        }
-        ::-webkit-scrollbar-thumb {
-            background: #cbd5e1; 
-            border-radius: 4px;
-        }
-        ::-webkit-scrollbar-thumb:hover {
-            background: #94a3b8; 
-        }
-    </style>
+      }
+    }
+  </script>
+
+  <style>
+    ::-webkit-scrollbar { width: 6px; height: 6px; }
+    ::-webkit-scrollbar-track { background: transparent; }
+    ::-webkit-scrollbar-thumb { background: #3f3f46; border-radius: 3px; }
+    ::-webkit-scrollbar-thumb:hover { background: #52525b; }
+    .loader-spin { animation: spin 1s linear infinite; }
+    @keyframes spin { from { transform: rotate(0deg); } to { transform: rotate(360deg); } }
+    .chart-box { position: relative; height: 300px; width: 100%; }
+  </style>
 </head>
-<body>
-    <div id="root"></div>
+<body class="bg-background text-primary font-sans h-screen flex flex-col overflow-hidden antialiased selection:bg-white selection:text-black">
 
-    <!-- Reactとライブラリの読み込み -->
-    <script type="module">
-        import React, { useState, useMemo, useEffect } from 'https://esm.sh/react@18.2.0';
-        import { createRoot } from 'https://esm.sh/react-dom@18.2.0/client';
-        import { 
-            BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip as RechartsTooltip, Legend, ResponsiveContainer, 
-            AreaChart, Area, Cell, ComposedChart, Line
-        } from 'https://esm.sh/recharts@2.12.0?deps=react@18.2.0,react-dom@18.2.0';
-        import { 
-            LayoutDashboard, TrendingUp, Store, Calendar, Search, 
-            CheckSquare, ArrowUpRight, ArrowDownRight, DollarSign, Check, ChevronDown,
-            BarChart2, Activity, X, Sparkles, Layers, Loader2, RefreshCw, Filter,
-            ArrowRight, Percent, ListOrdered, BarChart3
-        } from 'https://esm.sh/lucide-react@0.344.0?deps=react@18.2.0,react-dom@18.2.0';
+  <!-- Loader -->
+  <div id="loader" class="fixed inset-0 z-50 bg-background flex flex-col items-center justify-center">
+    <div class="w-8 h-8 border-2 border-border border-t-white rounded-full loader-spin mb-4"></div>
+    <div class="text-xs text-secondary tracking-widest uppercase">システム起動中...</div>
+  </div>
 
-        // ======================================================================================
-        // 【設定】本番環境用のGASウェブアプリURL
-        // ======================================================================================
-        const API_URL = "https://script.google.com/macros/s/AKfycbxEbyigRS2XYPlExnG-dhRHaBO6Dm0P9LhsP4FZ1KXp11sTqaktL0kGQn0Q__NDm4Fq/exec";
+  <!-- Header -->
+  <header class="h-14 border-b border-border bg-background/50 backdrop-blur-md flex items-center justify-between px-6 shrink-0 z-10">
+    <div class="flex items-center gap-3">
+      <div class="w-2 h-6 bg-white rounded-sm"></div>
+      <h1 class="font-bold text-lg tracking-tight">退会分析 <span class="text-secondary font-normal text-sm ml-2 hidden sm:inline">PRO DASHBOARD</span></h1>
+    </div>
+    <button onclick="openAIReport()" class="group flex items-center gap-2 px-4 py-1.5 bg-white text-black text-xs font-bold rounded-full hover:bg-gray-200 transition-all shadow-[0_0_15px_rgba(255,255,255,0.1)] hover:shadow-[0_0_20px_rgba(255,255,255,0.3)]">
+      <i class="fas fa-sparkles text-purple-600 group-hover:animate-pulse"></i>
+      <span>AIインサイト分析</span>
+    </button>
+  </header>
 
-        // --- デザインシステム設定 ---
-        const COLORS = {
-            textMain: '#0f172a',
-            textSub: '#334155',
-            accent: '#2563eb',
-            potential: '#d97706',
-            border: '#cbd5e1',
-            grid: '#94a3b8',
+  <div class="flex flex-1 overflow-hidden">
+    <!-- Sidebar -->
+    <aside class="w-64 border-r border-border bg-background flex flex-col p-5 gap-8 overflow-y-auto shrink-0 hidden md:flex">
+      
+      <!-- Period Filter -->
+      <div class="space-y-3">
+        <h3 class="text-xs font-semibold text-secondary uppercase tracking-wider">分析期間 (Period)</h3>
+        <div class="space-y-1">
+          <button onclick="togglePeriod(3, this)" class="period-btn w-full flex items-center justify-between px-3 py-2 text-sm text-secondary hover:text-primary hover:bg-surface rounded-md transition-colors group">
+            <span>直近 3ヶ月</span>
+            <span class="w-1.5 h-1.5 rounded-full bg-current opacity-0 group-[.active]:opacity-100"></span>
+          </button>
+          <button onclick="togglePeriod(6, this)" class="period-btn w-full flex items-center justify-between px-3 py-2 text-sm text-secondary hover:text-primary hover:bg-surface rounded-md transition-colors group">
+            <span>直近 6ヶ月</span>
+            <span class="w-1.5 h-1.5 rounded-full bg-current opacity-0 group-[.active]:opacity-100"></span>
+          </button>
+          <button onclick="togglePeriod(12, this)" class="period-btn w-full flex items-center justify-between px-3 py-2 text-sm text-secondary hover:text-primary hover:bg-surface rounded-md transition-colors group">
+            <span>直近 1年</span>
+            <span class="w-1.5 h-1.5 rounded-full bg-current opacity-0 group-[.active]:opacity-100"></span>
+          </button>
+        </div>
+      </div>
+
+      <!-- Custom Range -->
+      <div class="space-y-3">
+        <h3 class="text-xs font-semibold text-secondary uppercase tracking-wider">期間指定 (Custom)</h3>
+        <div class="flex flex-col gap-2">
+          <select id="startMonth" onchange="customFilter()" class="w-full bg-surface border border-border text-xs rounded-md px-3 py-2 focus:ring-1 focus:ring-white focus:border-white outline-none"></select>
+          <div class="text-center text-border text-[10px] transform rotate-90 sm:rotate-0">|</div>
+          <select id="endMonth" onchange="customFilter()" class="w-full bg-surface border border-border text-xs rounded-md px-3 py-2 focus:ring-1 focus:ring-white focus:border-white outline-none"></select>
+        </div>
+      </div>
+
+      <div class="mt-auto pt-6 border-t border-border">
+        <button onclick="exportData()" class="w-full flex items-center justify-center gap-2 px-4 py-2 border border-border text-secondary text-xs font-medium rounded-md hover:bg-surface hover:text-white transition-colors">
+          <i class="fas fa-download"></i> CSVデータ出力
+        </button>
+      </div>
+    </aside>
+
+    <!-- Main Dashboard -->
+    <main class="flex-1 p-6 overflow-y-auto space-y-6 bg-[#0c0c0e]">
+      
+      <!-- KPI Grid -->
+      <div class="grid grid-cols-1 md:grid-cols-3 gap-4">
+        <!-- KPI 1 -->
+        <div class="bg-surface border border-border rounded-lg p-5 flex flex-col justify-between hover:border-zinc-700 transition-colors">
+          <div class="flex justify-between items-start">
+            <span class="text-xs font-medium text-secondary uppercase">期間内 退会総数</span>
+            <i class="fas fa-users text-zinc-700 text-sm"></i>
+          </div>
+          <div class="mt-4">
+            <div id="totalWithdrawals" class="text-3xl font-bold tracking-tight font-mono">-</div>
+            <div class="text-xs text-secondary mt-1">件</div>
+          </div>
+        </div>
+
+        <!-- KPI 2 -->
+        <div class="bg-surface border border-border rounded-lg p-5 flex flex-col justify-between hover:border-zinc-700 transition-colors">
+          <div class="flex justify-between items-start">
+            <span class="text-xs font-medium text-secondary uppercase">最大理由 (シェア)</span>
+            <i class="fas fa-chart-pie text-zinc-700 text-sm"></i>
+          </div>
+          <div class="mt-4">
+            <div id="topReason" class="text-xl font-bold tracking-tight truncate">-</div>
+            <div class="flex items-center gap-2 mt-1">
+              <span id="topReasonShare" class="text-white font-mono font-bold">-</span>
+              <span class="text-xs text-secondary">% の構成比</span>
+            </div>
+          </div>
+        </div>
+
+        <!-- KPI 3 -->
+        <div class="bg-surface border border-border rounded-lg p-5 flex flex-col justify-between hover:border-zinc-700 transition-colors">
+          <div class="flex justify-between items-start">
+            <span class="text-xs font-medium text-secondary uppercase">急増アラート</span>
+            <i class="fas fa-arrow-trend-up text-zinc-700 text-sm"></i>
+          </div>
+          <div class="mt-4">
+            <div id="surgingReason" class="text-xl font-bold tracking-tight text-white">-</div>
+            <div id="surgingTrend" class="text-xs mt-1">-</div>
+          </div>
+        </div>
+      </div>
+
+      <!-- Charts Section -->
+      <div class="grid grid-cols-1 lg:grid-cols-3 gap-6 h-[400px]">
+        <!-- Stacked Bar (Wide) -->
+        <div class="lg:col-span-2 bg-surface border border-border rounded-lg p-5 flex flex-col">
+          <div class="flex items-center justify-between mb-4">
+            <h3 class="text-sm font-semibold">月次シェア推移 (100%積上)</h3>
+            <span class="text-[10px] text-secondary border border-border px-2 py-0.5 rounded bg-background">構成比トレンド</span>
+          </div>
+          <div class="flex-1 min-h-0 chart-box">
+            <canvas id="trendChart"></canvas>
+          </div>
+        </div>
+
+        <!-- Ranking List (Narrow) -->
+        <div class="bg-surface border border-border rounded-lg p-5 flex flex-col">
+          <h3 class="text-sm font-semibold mb-4">理由別ランキング</h3>
+          <div class="flex-1 overflow-y-auto pr-1">
+            <table class="w-full text-left border-collapse">
+              <thead class="text-[10px] text-secondary uppercase tracking-wider sticky top-0 bg-surface">
+                <tr>
+                  <th class="pb-2 font-medium">理由</th>
+                  <th class="pb-2 text-right font-medium">件数</th>
+                  <th class="pb-2 text-right font-medium">%</th>
+                </tr>
+              </thead>
+              <tbody id="reasonListBody" class="text-sm divide-y divide-border/50"></tbody>
+            </table>
+          </div>
+        </div>
+      </div>
+
+      <!-- Detail Table -->
+      <div class="bg-surface border border-border rounded-lg p-5">
+        <div class="flex items-center justify-between mb-4">
+          <h3 class="text-sm font-semibold">直近ログ (Recent Activity)</h3>
+          <span class="text-xs text-secondary">最新100件を表示</span>
+        </div>
+        <div class="overflow-x-auto">
+          <table class="w-full text-left border-collapse" id="dataTable">
+            <thead class="text-[10px] text-secondary uppercase tracking-wider border-b border-border">
+              <tr>
+                <th class="px-4 py-3 font-medium">年月</th>
+                <th class="px-4 py-3 font-medium">氏名</th>
+                <th class="px-4 py-3 font-medium">退会理由</th>
+                <th class="px-4 py-3 font-medium">頻度</th>
+                <th class="px-4 py-3 font-medium text-right">日付</th>
+              </tr>
+            </thead>
+            <tbody class="text-sm divide-y divide-border/50"></tbody>
+          </table>
+        </div>
+      </div>
+    </main>
+  </div>
+
+  <!-- AI Modal -->
+  <div id="aiModal" class="fixed inset-0 z-50 bg-black/80 backdrop-blur-sm hidden items-center justify-center opacity-0 transition-opacity duration-300">
+    <div class="bg-surface border border-border w-full max-w-2xl rounded-xl shadow-2xl transform scale-95 transition-transform duration-300 flex flex-col max-h-[85vh] mx-4" id="aiModalContent">
+      <div class="flex items-center justify-between p-5 border-b border-border">
+        <div class="flex items-center gap-3">
+          <div class="p-2 bg-purple-500/10 rounded-lg">
+            <i class="fas fa-robot text-purple-400"></i>
+          </div>
+          <h3 class="font-bold text-lg">AIインサイト分析レポート</h3>
+        </div>
+        <button onclick="closeAIReport()" class="text-secondary hover:text-white transition-colors text-xl">&times;</button>
+      </div>
+      <div id="aiReportContent" class="p-6 overflow-y-auto leading-relaxed text-gray-300 space-y-4"></div>
+    </div>
+  </div>
+
+  <script>
+    // --- Global State ---
+    let rawData = [];
+    let filteredData = [];
+    let months = []; 
+    
+    // --- Initialization ---
+    window.onload = function() {
+      // Global Chart Config (Japanese Font)
+      Chart.defaults.font.family = "'Noto Sans JP', sans-serif";
+      Chart.defaults.color = '#71717a'; 
+      Chart.defaults.borderColor = '#27272a';
+
+      if (typeof google !== 'undefined' && google.script && google.script.run) {
+        google.script.run
+          .withSuccessHandler(initData)
+          .withFailureHandler(showError)
+          .getMasterData();
+      } else {
+        setTimeout(() => {
+          initData(generateMockData());
+        }, 800);
+      }
+    };
+
+    function initData(data) {
+      if(!data || data.length === 0) {
+        showError("データがありません");
+        return;
+      }
+      rawData = data;
+      document.getElementById('loader').style.display = 'none';
+
+      months = [...new Set(data.map(d => d.yearMonth))].sort().reverse();
+      
+      const startSel = document.getElementById('startMonth');
+      const endSel = document.getElementById('endMonth');
+      startSel.innerHTML = '';
+      endSel.innerHTML = '';
+      
+      months.forEach(m => {
+        startSel.add(new Option(m, m));
+        endSel.add(new Option(m, m));
+      });
+
+      // Default: 3 months
+      const defaultBtn = document.querySelector('.period-btn');
+      if(defaultBtn) togglePeriod(3, defaultBtn);
+    }
+
+    // --- Filter Logic ---
+    function togglePeriod(count, btn) {
+      document.querySelectorAll('.period-btn').forEach(b => {
+        b.classList.remove('active', 'bg-surface', 'text-white', 'font-medium');
+        b.classList.add('text-secondary');
+      });
+
+      if (btn && btn.getAttribute('data-active') === 'true') {
+        btn.setAttribute('data-active', 'false');
+        setPeriodRange(0);
+        return;
+      }
+
+      document.querySelectorAll('.period-btn').forEach(b => b.setAttribute('data-active', 'false'));
+      if (btn) {
+        btn.classList.add('active', 'bg-surface', 'text-white', 'font-medium');
+        btn.classList.remove('text-secondary');
+        btn.setAttribute('data-active', 'true');
+      }
+      setPeriodRange(count);
+    }
+
+    function setPeriodRange(count) {
+      if (count === 0) {
+        applyFilter(months[months.length-1], months[0]);
+        updateSelects(months[months.length-1], months[0]);
+      } else {
+        const end = months[0];
+        const startIndex = Math.min(count - 1, months.length - 1);
+        const start = months[startIndex];
+        applyFilter(start, end);
+        updateSelects(start, end);
+      }
+    }
+
+    function customFilter() {
+      document.querySelectorAll('.period-btn').forEach(b => {
+        b.classList.remove('active', 'bg-surface', 'text-white');
+        b.setAttribute('data-active', 'false');
+      });
+      const s = document.getElementById('startMonth').value;
+      const e = document.getElementById('endMonth').value;
+      applyFilter(s, e);
+    }
+
+    function updateSelects(start, end) {
+      document.getElementById('startMonth').value = start;
+      document.getElementById('endMonth').value = end;
+    }
+
+    function applyFilter(startMonth, endMonth) {
+      if (startMonth > endMonth) [startMonth, endMonth] = [endMonth, startMonth];
+      filteredData = rawData.filter(d => d.yearMonth >= startMonth && d.yearMonth <= endMonth);
+      renderDashboard(filteredData, startMonth, endMonth);
+    }
+
+    // --- Rendering ---
+    let trendChart = null;
+    let currentSortedReasons = [];
+
+    function renderDashboard(data, startM, endM) {
+      const total = data.length;
+      document.getElementById('totalWithdrawals').innerText = total.toLocaleString();
+
+      const reasonCounts = {};
+      data.forEach(d => {
+        const r = d.reason || 'その他';
+        reasonCounts[r] = (reasonCounts[r] || 0) + 1;
+      });
+      const sortedReasons = Object.entries(reasonCounts).sort((a,b) => b[1] - a[1]);
+      currentSortedReasons = sortedReasons;
+
+      const colorMap = {};
+      sortedReasons.forEach((item, i) => {
+        const val = Math.max(50, 255 - (i * 30)); 
+        colorMap[item[0]] = `rgb(${val}, ${val}, ${val})`;
+      });
+
+      if (sortedReasons.length > 0) {
+        const top = sortedReasons[0];
+        document.getElementById('topReason').innerText = top[0];
+        document.getElementById('topReasonShare').innerText = ((top[1] / total) * 100).toFixed(1);
+      } else {
+        document.getElementById('topReason').innerText = "-";
+        document.getElementById('topReasonShare').innerText = "-";
+      }
+
+      const rangeMonths = months.filter(m => m >= startM && m <= endM).sort();
+      const reasonKeys = sortedReasons.map(r => r[0]);
+
+      const datasets = reasonKeys.map(reason => {
+        return {
+          label: reason,
+          data: rangeMonths.map(m => {
+            const mData = data.filter(d => d.yearMonth === m);
+            if (mData.length === 0) return 0;
+            const count = mData.filter(d => (d.reason||'その他') === reason).length;
+            return ((count / mData.length) * 100).toFixed(1);
+          }),
+          backgroundColor: colorMap[reason],
+          borderWidth: 0
         };
+      });
 
-        const BUSINESS_TYPES = [
-            { id: '赤', label: '赤' },
-            { id: 'GH', label: 'GH' },
-            { id: '青', label: '青' },
-            { id: 'ジムLITE', label: 'ジムLITE' },
-            { id: 'LITE', label: 'LITE' },
-            { id: 'J+', label: 'J+' },
-            { id: 'ヨガ', label: 'ヨガ' },
-        ];
-
-        const OPTION_NAMES = [
-            '安心サポート', '水素水', 'ロッカー関連', 'タンニング', '体組成計',
-            'プロテイン', 'サプリメント', 'オンラインレッスン', 'レディースエリア', 'スタジオ関連',
-            'コラーゲン', '酸素BOX', 'レンタルタオル', 'セルフエステ', 'セルフ脱毛'
-        ];
-
-        const MONTH_ORDER = [
-            '2024年度4月', '2024年度5月', '2024年度6月', '2024年度7月', 
-            '2024年度8月', '2024年度9月', '2024年度10月', '2024年度11月', 
-            '2024年度12月', '2025年度1月', '2025年度2月', '2025年度3月',
-            '2025年度4月', '2025年度5月', '2025年度6月', '2025年度7月', 
-            '2025年度8月', '2025年度9月', '2025年度10月', '2025年度11月', 
-            '2025年度12月', '2026年度1月'
-        ];
-
-        const formatYen = (num) => new Intl.NumberFormat('ja-JP', { style: 'currency', currency: 'JPY' }).format(num);
-        const formatPercent = (num) => `${(num * 100).toFixed(1)}%`;
-
-        // ランキンググラフ用の色生成ロジック
-        const getRankingColor = (index) => {
-            // Top 3は赤系
-            if (index === 0) return '#b91c1c'; // Red 700 (真っ赤)
-            if (index === 1) return '#dc2626'; // Red 600
-            if (index === 2) return '#ef4444'; // Red 500 (薄い赤)
-            
-            // 4位以降はグレーのグラデーション
-            // indexが増えるごとに薄くする
-            // ベースは Slate 500 (#64748b) からスタート
-            const grayIntensity = Math.min(index * 10, 100); // 徐々に白に近づける
-            // 簡易的なグレー階調のシミュレーション（実際は固定パレットの方が安定するが、今回はロジックで）
-            if (index === 3) return '#64748b';
-            if (index === 4) return '#94a3b8';
-            if (index === 5) return '#cbd5e1';
-            return '#e2e8f0'; // それ以降は薄いグレー
-        };
-
-        // --- UI Components ---
-        const Card = ({ children, className = "", noPadding = false }) => (
-            React.createElement("div", { className: `bg-white border border-slate-300 shadow-sm rounded-none ${!noPadding ? 'p-6' : ''} ${className}` }, children)
-        );
-
-        const SectionTitle = ({ title, subtitle, icon: Icon, rightElement }) => (
-            React.createElement("div", { className: "mb-4 flex items-center justify-between" },
-                React.createElement("div", { className: "flex items-center gap-3" },
-                    Icon && React.createElement("div", { className: "p-1.5 bg-slate-900 text-white" }, React.createElement(Icon, { size: 16 })),
-                    React.createElement("div", null,
-                        React.createElement("h3", { className: "text-lg font-bold text-slate-900 leading-tight" }, title),
-                        subtitle && React.createElement("p", { className: "text-xs text-slate-600 font-medium mt-0.5" }, subtitle)
-                    )
-                ),
-                rightElement && React.createElement("div", null, rightElement)
-            )
-        );
-
-        // --- 3Dボタン ---
-        const FilterButton3D = ({ label, icon: Icon, onClick, isActive, valueLabel, colorClass = "blue" }) => {
-            const colors = {
-                blue: "bg-white border-blue-600 text-blue-700 hover:bg-blue-50 active:border-blue-700",
-                indigo: "bg-white border-indigo-600 text-indigo-700 hover:bg-indigo-50 active:border-indigo-700",
-                orange: "bg-white border-orange-500 text-orange-700 hover:bg-orange-50 active:border-orange-600",
-            };
-
-            const baseStyle = "group relative w-full md:w-auto min-w-[140px] h-12 flex items-center justify-center gap-2 px-4 rounded-lg font-bold border-2 border-b-[5px] transition-all active:border-b-2 active:translate-y-[3px] focus:outline-none";
-            const activeStyle = isActive ? "translate-y-[1px] border-b-4 bg-slate-50" : "";
-
-            return React.createElement("button", {
-                className: `${baseStyle} ${colors[colorClass]} ${activeStyle}`,
-                onClick: onClick
-            },
-                Icon && React.createElement(Icon, { size: 18, className: "flex-shrink-0" }),
-                React.createElement("div", { className: "flex flex-col items-center leading-none" },
-                    React.createElement("span", { className: "text-[10px] opacity-70 mb-0.5 tracking-wider" }, label),
-                    React.createElement("span", { className: "text-sm truncate max-w-[120px]" }, valueLabel)
-                )
-            );
-        };
-
-        // --- 全画面検索モーダル ---
-        const FullScreenSearchModal = ({ isOpen, onClose, items, selectedItems, onSelect, title, icon: Icon }) => {
-            const [searchTerm, setSearchTerm] = useState("");
-            
-            if (!isOpen) return null;
-
-            const filteredItems = items.filter(item => item.toLowerCase().includes(searchTerm.toLowerCase()));
-
-            return React.createElement("div", { className: "fixed inset-0 z-[100] bg-slate-900/80 backdrop-blur-sm flex items-center justify-center p-4 animate-in fade-in duration-200" },
-                React.createElement("div", { className: "bg-white w-full max-w-5xl h-[85vh] rounded-2xl shadow-2xl flex flex-col overflow-hidden border border-slate-300" },
-                    // Header
-                    React.createElement("div", { className: "p-6 border-b border-slate-200 bg-slate-50 flex items-center justify-between flex-shrink-0" },
-                        React.createElement("div", { className: "flex items-center gap-4" },
-                            React.createElement("div", { className: "p-3 bg-indigo-600 text-white rounded-xl shadow-lg shadow-indigo-200" },
-                                Icon && React.createElement(Icon, { size: 28 })
-                            ),
-                            React.createElement("div", null,
-                                React.createElement("h2", { className: "text-2xl font-bold text-slate-800" }, title),
-                                React.createElement("p", { className: "text-slate-500 text-sm" }, "複数選択可能です")
-                            )
-                        ),
-                        React.createElement("button", { 
-                            onClick: onClose,
-                            className: "p-2 hover:bg-slate-200 rounded-full transition-colors"
-                        }, React.createElement(X, { size: 28, className: "text-slate-500" }))
-                    ),
-                    
-                    // Search Bar
-                    React.createElement("div", { className: "p-6 border-b border-slate-200 bg-white sticky top-0 z-10" },
-                        React.createElement("div", { className: "relative max-w-2xl mx-auto" },
-                            React.createElement(Search, { className: "absolute left-4 top-1/2 -translate-y-1/2 text-slate-400", size: 20 }),
-                            React.createElement("input", {
-                                type: "text",
-                                placeholder: "キーワードで絞り込む...",
-                                className: "w-full pl-12 pr-4 py-4 bg-slate-100 border-2 border-slate-200 rounded-xl text-lg font-bold focus:outline-none focus:border-indigo-500 focus:bg-white transition-all placeholder:text-slate-400",
-                                value: searchTerm,
-                                onChange: (e) => setSearchTerm(e.target.value),
-                                autoFocus: true
-                            })
-                        )
-                    ),
-
-                    // Content
-                    React.createElement("div", { className: "flex-1 overflow-y-auto p-6 bg-slate-50/50" },
-                        React.createElement("div", { className: "grid grid-cols-2 md:grid-cols-3 lg:grid-cols-4 xl:grid-cols-5 gap-3" },
-                            filteredItems.map(item => (
-                                React.createElement("button", {
-                                    key: item,
-                                    onClick: () => onSelect(item),
-                                    className: `
-                                        relative group flex items-center p-4 rounded-xl text-left transition-all duration-200 border-2
-                                        ${selectedItems.includes(item) 
-                                            ? 'bg-indigo-600 border-indigo-600 text-white shadow-lg shadow-indigo-200 scale-[1.02]' 
-                                            : 'bg-white border-slate-200 text-slate-600 hover:border-indigo-300 hover:shadow-md'}
-                                    `
-                                },
-                                    React.createElement("div", { className: "flex-1 font-bold text-sm truncate" }, item),
-                                    selectedItems.includes(item) && React.createElement("div", { className: "absolute top-2 right-2" },
-                                        React.createElement(Check, { size: 16, className: "text-indigo-200" })
-                                    )
-                                )
-                            ))
-                        ),
-                        filteredItems.length === 0 && React.createElement("div", { className: "flex flex-col items-center justify-center h-64 text-slate-400" },
-                            React.createElement(Search, { size: 48, className: "mb-4 opacity-20" }),
-                            React.createElement("p", null, "該当する項目が見つかりません")
-                        )
-                    ),
-
-                    // Footer
-                    React.createElement("div", { className: "p-4 border-t border-slate-200 bg-white flex justify-between items-center" },
-                        React.createElement("div", { className: "text-sm font-bold text-slate-500" },
-                            React.createElement("span", { className: "text-indigo-600 text-lg mr-1" }, selectedItems.length),
-                            "項目を選択中"
-                        ),
-                        React.createElement("div", { className: "flex gap-3" },
-                            selectedItems.length > 0 && React.createElement("button", {
-                                onClick: () => { selectedItems.forEach(i => onSelect(i)); }, 
-                                className: "px-4 py-2 text-slate-500 font-bold hover:bg-slate-100 rounded-lg transition-colors text-sm"
-                            }, "リセット"),
-                            React.createElement("button", {
-                                onClick: onClose,
-                                className: "px-8 py-3 bg-slate-900 text-white font-bold rounded-lg hover:bg-slate-800 transition-colors shadow-lg"
-                            }, "決定して閉じる")
-                        )
-                    )
-                )
-            );
-        };
-
-        // --- メインコンポーネント ---
-        function SalesDashboard() {
-            const [data, setData] = useState([]);
-            const [loading, setLoading] = useState(true);
-            const [error, setError] = useState(null);
-
-            const [selectedMonths, setSelectedMonths] = useState([]);
-            const [selectedStores, setSelectedStores] = useState([]);
-            const [selectedTypes, setSelectedTypes] = useState([]); 
-            
-            const [focusedOption, setFocusedOption] = useState(null);
-            const [potentialBenchmark, setPotentialBenchmark] = useState('TOP');
-            
-            // チャート表示モード ('store' | 'option')
-            const [chartMode, setChartMode] = useState('store');
-
-            // モーダル状態
-            const [isStoreModalOpen, setIsStoreModalOpen] = useState(false);
-            const [isTypeModalOpen, setIsTypeModalOpen] = useState(false);
-            const [isMonthModalOpen, setIsMonthModalOpen] = useState(false);
-
-            // --- データ取得 ---
-            useEffect(() => {
-                const fetchData = async () => {
-                setLoading(true);
-                try {
-                    if (!API_URL) {
-                    console.warn("API_URLが設定されていません。デモデータを使用します。");
-                    await new Promise(resolve => setTimeout(resolve, 800));
-                    setData(generateDemoData());
-                    setSelectedMonths(['2025年度1月']);
-                    } else {
-                    const response = await fetch(API_URL);
-                    const json = await response.json();
-                    setData(json);
-                    if (json.length > 0) {
-                        const uniqueMonths = Array.from(new Set(json.map(d => d.month)));
-                        const sortedMonths = uniqueMonths.sort((a, b) => MONTH_ORDER.indexOf(b) - MONTH_ORDER.indexOf(a));
-                        if (sortedMonths.length > 0) {
-                        setSelectedMonths([sortedMonths[0]]);
-                        }
-                    }
-                    }
-                } catch (err) {
-                    console.error("Data fetch error:", err);
-                    setError("データの取得に失敗しました。通信環境を確認してください。");
-                } finally {
-                    setLoading(false);
-                }
-                };
-                fetchData();
-            }, []);
-
-            // マスタデータの抽出
-            const allStores = useMemo(() => Array.from(new Set(data.map(d => d.store))), [data]);
-            const allTypes = useMemo(() => BUSINESS_TYPES.map(t => t.id), []);
-            const availableMonths = useMemo(() => {
-                const months = Array.from(new Set(data.map(d => d.month)));
-                return months.sort((a, b) => MONTH_ORDER.indexOf(a) - MONTH_ORDER.indexOf(b));
-            }, [data]);
-
-            const isStoreMode = selectedStores.length > 0;
-            const isTypeMode = !isStoreMode && selectedTypes.length > 0;
-
-            // --- 選択ロジック（排他制御）---
-            const handleStoreSelect = (store) => {
-                let newSelection;
-                if (selectedStores.includes(store)) {
-                    newSelection = selectedStores.filter(s => s !== store);
-                } else {
-                    newSelection = [...selectedStores, store];
-                }
-                setSelectedStores(newSelection);
-                if (newSelection.length > 0) setSelectedTypes([]); 
-            };
-
-            const handleTypeSelect = (type) => {
-                let newSelection;
-                if (selectedTypes.includes(type)) {
-                    newSelection = selectedTypes.filter(t => t !== type);
-                } else {
-                    newSelection = [...selectedTypes, type];
-                }
-                setSelectedTypes(newSelection);
-                if (newSelection.length > 0) setSelectedStores([]);
-            };
-
-            const handleMonthSelect = (month) => {
-                if (selectedMonths.includes(month)) {
-                    setSelectedMonths(selectedMonths.filter(m => m !== month));
-                } else {
-                    setSelectedMonths([...selectedMonths, month]);
-                }
-            };
-
-            // --- データフィルタリング ---
-            const filteredDataRaw = useMemo(() => {
-                return data.filter(d => {
-                const matchMonth = selectedMonths.length === 0 || selectedMonths.includes(d.month);
-                const matchStore = isStoreMode ? selectedStores.includes(d.store) : true;
-                const matchType = (isStoreMode || isTypeMode) && selectedTypes.length > 0 ? selectedTypes.includes(d.type) : true;
-                return matchMonth && matchStore && matchType;
-                });
-            }, [data, selectedMonths, selectedStores, selectedTypes, isStoreMode, isTypeMode]);
-
-
-            // --- 集計データ生成 (Main Chart & Table) ---
-            const aggregatedData = useMemo(() => {
-                const groupBy = isTypeMode ? 'type' : 'store';
-                const groupMap = {};
-                const optionStats = {}; 
-
-                filteredDataRaw.forEach(d => {
-                const key = d[groupBy]; 
-                if (!groupMap[key]) {
-                    const optionsInit = {};
-                    OPTION_NAMES.forEach(opt => {
-                    optionsInit[opt] = { sales: 0, count: 0, sumRatio: 0, recordCount: 0, activeCount: 0 };
-                    });
-                    groupMap[key] = {
-                    id: key, store: key, type: isTypeMode ? key : d.type,
-                    sales: 0, baseSales: 0, optionsTotalSales: 0,
-                    monthsIncluded: new Set(), count: 0, options: optionsInit
-                    };
-                }
-                
-                const group = groupMap[key];
-                group.sales += d.sales;
-                group.baseSales += d.baseSales;
-                group.optionsTotalSales += d.optionsTotalSales;
-                group.monthsIncluded.add(d.month);
-                group.count += 1;
-
-                OPTION_NAMES.forEach(opt => {
-                    if (d[opt]) {
-                    if (d[opt].active) group.options[opt].activeCount += 1;
-                    group.options[opt].sales += d[opt].sales;
-                    group.options[opt].count += d[opt].count;
-                    group.options[opt].sumRatio += d[opt].ratio;
-                    if (d[opt].active) group.options[opt].recordCount += 1;
-                    }
-                });
-                });
-
-                let flattened = Object.values(groupMap).map(g => {
-                const divisor = isTypeMode ? g.count : 1; 
-                const obj = {
-                    id: g.id, store: g.store, type: g.type,
-                    sales: g.sales / divisor, baseSales: g.baseSales / divisor, optionsTotalSales: g.optionsTotalSales / divisor,
-                    optionsRatio: g.sales > 0 ? g.optionsTotalSales / g.sales : 0,
-                    monthCount: g.monthsIncluded.size, dataCount: g.count
-                };
-                OPTION_NAMES.forEach(opt => {
-                    const optData = g.options[opt];
-                    const isActive = optData.activeCount > 0;
-                    const salesShare = g.optionsTotalSales > 0 ? optData.sales / g.optionsTotalSales : 0;
-                    obj[opt] = {
-                        active: isActive,
-                        sales: optData.sales / divisor,
-                        count: optData.count / divisor,
-                        ratio: salesShare
-                    };
-                });
-                return obj;
-                });
-                
-                if (!isTypeMode) {
-                    flattened.sort((a, b) => allStores.indexOf(a.store) - allStores.indexOf(b.store));
-                }
-
-                OPTION_NAMES.forEach(opt => {
-                const activeGroups = flattened.filter(d => d[opt].active);
-                const maxRatio = activeGroups.length > 0 ? Math.max(...activeGroups.map(d => d[opt].ratio)) : 0;
-                const avgRatio = activeGroups.length > 0 ? activeGroups.reduce((s, d) => s + d[opt].ratio, 0) / activeGroups.length : 0;
-                optionStats[opt] = { maxRatio, avgRatio };
-                });
-
-                flattened.forEach(d => {
-                let totalPotential = 0;
-                OPTION_NAMES.forEach(opt => {
-                    const stats = optionStats[opt];
-                    const targetRatio = potentialBenchmark === 'TOP' ? stats.maxRatio : stats.avgRatio;
-                    const currentRatio = d[opt].ratio;
-                    const currentSales = d[opt].sales;
-                    let potential = 0;
-                    if (d[opt].active && currentRatio > 0 && currentRatio < targetRatio) {
-                    potential = (currentSales / currentRatio) * (targetRatio - currentRatio);
-                    }
-                    d[opt].potential = potential;
-                    d[opt].benchmarkRatio = targetRatio;
-                    d[opt].avgRatio = stats.avgRatio;
-                    totalPotential += potential;
-                });
-                d.totalPotential = totalPotential;
-                });
-
-                return flattened;
-            }, [filteredDataRaw, isTypeMode, potentialBenchmark, allStores]);
-
-            // --- オプション別売上ランキングデータ生成 ---
-            const optionRankingData = useMemo(() => {
-                const ranking = OPTION_NAMES.map(optName => {
-                    let totalSales = 0;
-                    filteredDataRaw.forEach(d => {
-                        if (d[optName] && d[optName].active) {
-                            totalSales += d[optName].sales;
-                        }
-                    });
-                    return { name: optName, sales: totalSales };
-                });
-                // 売上降順にソート
-                return ranking.sort((a, b) => b.sales - a.sales);
-            }, [filteredDataRaw]);
-
-            // --- KPI計算 (5項目・前月比対応) ---
-            const kpiData = useMemo(() => {
-                const totalSales = filteredDataRaw.reduce((sum, d) => sum + d.sales, 0);
-                const totalOptionSales = filteredDataRaw.reduce((sum, d) => sum + d.optionsTotalSales, 0);
-                const currentRate = totalSales > 0 ? totalOptionSales / totalSales : 0;
-
-                let prevTotalSales = 0;
-                let prevTotalOptionSales = 0;
-                let hasPrevData = false;
-
-                if (selectedMonths.length > 0) {
-                    const targetPrevMonths = selectedMonths.map(m => {
-                        const idx = MONTH_ORDER.indexOf(m);
-                        return idx > 0 ? MONTH_ORDER[idx - 1] : null; 
-                    }).filter(Boolean);
-
-                    if (targetPrevMonths.length > 0) {
-                        const prevData = data.filter(d => {
-                            const matchMonth = targetPrevMonths.includes(d.month);
-                            const matchStore = isStoreMode ? selectedStores.includes(d.store) : true;
-                            const matchType = (isStoreMode || isTypeMode) && selectedTypes.length > 0 ? selectedTypes.includes(d.type) : true;
-                            return matchMonth && matchStore && matchType;
-                        });
-
-                        if (prevData.length > 0) {
-                            prevTotalSales = prevData.reduce((sum, d) => sum + d.sales, 0);
-                            prevTotalOptionSales = prevData.reduce((sum, d) => sum + d.optionsTotalSales, 0);
-                            hasPrevData = true;
-                        }
-                    }
-                }
-
-                const prevRate = (hasPrevData && prevTotalSales > 0) ? prevTotalOptionSales / prevTotalSales : 0;
-                const diffRate = hasPrevData ? currentRate - prevRate : null;
-
-                return { 
-                    totalSales, 
-                    totalOptionSales, 
-                    currentRate, 
-                    prevRate, 
-                    diffRate,
-                    hasPrevData 
-                };
-            }, [filteredDataRaw, data, selectedMonths, isStoreMode, isTypeMode, selectedStores, selectedTypes]);
-
-            // --- トレンドデータ ---
-            const trendData = useMemo(() => {
-                const targetMonths = (selectedMonths.length > 0 ? selectedMonths : availableMonths)
-                .sort((a, b) => MONTH_ORDER.indexOf(a) - MONTH_ORDER.indexOf(b));
-                return targetMonths.map(m => {
-                const monthlyData = filteredDataRaw.filter(d => d.month === m);
-                return {
-                    month: m.replace('2025年度', '').replace('2024年度', ''), // 簡易表示
-                    fullMonthName: m,
-                    sales: monthlyData.reduce((sum, d) => sum + d.sales, 0),
-                    optionSales: monthlyData.reduce((sum, d) => sum + d.optionsTotalSales, 0),
-                };
-                });
-            }, [filteredDataRaw, selectedMonths, availableMonths]);
-
-             // --- デモデータ生成 ---
-             const generateDemoData = () => {
-                let dummyData = [];
-                const storeBaseNames = ['仙台', '浦和', '川口', '大宮', '新宿', '渋谷', '池袋', '横浜', '川崎', '千葉', '船橋', '柏', '名古屋', '大阪', '神戸', '京都', '福岡', '札幌', '広島', '那覇'];
-                const DEMO_MONTHS = ['2025年度4月', '2025年度5月', '2025年度6月', '2025年度7月', '2025年度8月', '2025年度9月', '2025年度10月', '2025年度11月', '2025年度12月', '2025年度1月'];
-                
-                const storeProfiles = storeBaseNames.map((name, index) => {
-                const type = BUSINESS_TYPES[(index + name.length) % BUSINESS_TYPES.length];
-                const optionsProfile = {};
-                OPTION_NAMES.forEach(opt => { optionsProfile[opt] = Math.random() > 0.3; });
-                return { baseName: name, type: type.id, optionsProfile };
-                });
-
-                DEMO_MONTHS.forEach((month) => {
-                storeProfiles.forEach((profile, index) => {
-                    const storeName = `${profile.baseName}${index + 1}号店`;
-                    const fluctuation = 0.9 + Math.random() * 0.2; 
-                    const baseSales = Math.floor(((1000000 + Math.random() * 8000000) * fluctuation) / 1000) * 1000;
-                    const optionDetails = {};
-                    let optionsTotalSales = 0;
-
-                    OPTION_NAMES.forEach(optName => {
-                    const isActive = profile.optionsProfile[optName];
-                    const count = isActive ? Math.floor(Math.random() * 200 * fluctuation) : 0;
-                    const sales = isActive ? count * (500 + Math.floor(Math.random() * 1000)) : 0;
-                    const ratioBase = Math.random() * 0.4; 
-                    const ratio = isActive ? (ratioBase + 0.05).toFixed(3) : 0;
-
-                    optionDetails[optName] = {
-                        active: isActive, count: count, sales: sales, ratio: Number(ratio)
-                    };
-                    optionsTotalSales += sales;
-                    });
-
-                    dummyData.push({
-                    id: `${month}-${storeName}`,
-                    month: month,
-                    store: storeName,
-                    type: profile.type,
-                    sales: baseSales + optionsTotalSales,
-                    baseSales: baseSales,
-                    ...optionDetails,
-                    optionsTotalSales: optionsTotalSales,
-                    optionsRatio: (optionsTotalSales / (baseSales + optionsTotalSales)),
-                    });
-                });
-                });
-                return dummyData;
-            };
-
-
-            if (loading) {
-                return (
-                React.createElement("div", { className: "min-h-screen bg-slate-50 flex flex-col items-center justify-center p-6 text-slate-400" },
-                    React.createElement(Loader2, { className: "w-10 h-10 animate-spin text-indigo-600 mb-4" }),
-                    React.createElement("p", { className: "text-sm font-bold text-slate-600" }, "データを分析中..."),
-                    React.createElement("p", { className: "text-xs mt-2" }, "スプレッドシートから最新のデータを取得しています")
-                )
-                );
+      const ctx = document.getElementById('trendChart').getContext('2d');
+      if (trendChart) trendChart.destroy();
+      trendChart = new Chart(ctx, {
+        type: 'bar',
+        data: { labels: rangeMonths, datasets: datasets },
+        options: {
+          responsive: true, maintainAspectRatio: false,
+          scales: {
+            x: { stacked: true, grid: { display: false } },
+            y: { stacked: true, min: 0, max: 100, ticks: { callback: v => v + '%' } }
+          },
+          plugins: {
+            legend: { display: false },
+            tooltip: {
+              mode: 'index', intersect: false,
+              backgroundColor: '#18181b',
+              titleColor: '#fff',
+              bodyColor: '#a1a1aa',
+              borderColor: '#27272a',
+              borderWidth: 1,
+              titleFont: {family: 'Noto Sans JP'},
+              bodyFont: {family: 'Noto Sans JP'},
+              callbacks: { label: c => ` ${c.dataset.label}: ${c.raw}%` }
             }
-
-            if (error) {
-                return (
-                React.createElement("div", { className: "min-h-screen bg-slate-50 flex flex-col items-center justify-center p-6 text-slate-400" },
-                    React.createElement("div", { className: "bg-white p-8 rounded shadow-lg text-center max-w-md" },
-                    React.createElement(Activity, { className: "w-10 h-10 text-red-500 mx-auto mb-4" }),
-                    React.createElement("h2", { className: "text-lg font-bold text-slate-800 mb-2" }, "読み込みエラー"),
-                    React.createElement("p", { className: "text-sm text-slate-600 mb-6" }, error),
-                    React.createElement("button", { 
-                        onClick: () => window.location.reload(),
-                        className: "bg-slate-900 text-white px-4 py-2 rounded text-sm font-bold hover:bg-slate-800 transition-colors flex items-center gap-2 mx-auto"
-                    },
-                        React.createElement(RefreshCw, { size: 14 }), " 再読み込み"
-                    )
-                    )
-                )
-                );
-            }
-
-            // --- メインレンダリング ---
-            return (
-                React.createElement("div", { className: "min-h-screen bg-[#f8fafc] text-slate-900 selection:bg-slate-200" },
-                
-                /* Header */
-                React.createElement("header", { className: "sticky top-0 z-50 bg-white/95 backdrop-blur-sm border-b border-slate-300 shadow-sm py-3" },
-                    React.createElement("div", { className: "w-full max-w-[1800px] mx-auto px-6" },
-                        React.createElement("div", { className: "flex flex-col lg:flex-row items-center justify-between gap-4" },
-                            
-                            // Title Area
-                            React.createElement("div", { className: "flex items-center gap-3 flex-shrink-0 w-full lg:w-auto" },
-                                React.createElement("div", { className: "bg-slate-900 p-2.5 rounded-lg text-white shadow-lg shadow-slate-300" },
-                                    React.createElement(LayoutDashboard, { size: 24 })
-                                ),
-                                React.createElement("div", null,
-                                    React.createElement("h1", { className: "text-lg font-black text-slate-900 leading-none tracking-tight" }, "店舗売上・オプション分析"),
-                                    React.createElement("p", { className: "text-[10px] text-slate-500 font-bold mt-1 tracking-wider uppercase" },
-                                    API_URL ? '● Connected' : '○ Demo Mode'
-                                    )
-                                )
-                            ),
-
-                            // 3D Filter Buttons Area
-                            React.createElement("div", { className: "flex flex-wrap lg:flex-nowrap items-center gap-3 w-full lg:w-auto justify-center lg:justify-end" },
-                                React.createElement(FilterButton3D, {
-                                    label: "期間選択",
-                                    icon: Calendar,
-                                    valueLabel: selectedMonths.length > 0 ? `${selectedMonths.length}ヶ月選択中` : "全期間",
-                                    onClick: () => setIsMonthModalOpen(true),
-                                    isActive: selectedMonths.length > 0,
-                                    colorClass: "blue"
-                                }),
-                                React.createElement(FilterButton3D, {
-                                    label: "業態で検索",
-                                    icon: Layers,
-                                    valueLabel: selectedTypes.length > 0 ? `${selectedTypes.length}業態` : "未指定",
-                                    onClick: () => setIsTypeModalOpen(true),
-                                    isActive: selectedTypes.length > 0,
-                                    colorClass: "orange"
-                                }),
-                                React.createElement(FilterButton3D, {
-                                    label: "店舗検索",
-                                    icon: Search,
-                                    valueLabel: selectedStores.length > 0 ? `${selectedStores.length}店舗` : "店舗を選ぶ",
-                                    onClick: () => setIsStoreModalOpen(true),
-                                    isActive: selectedStores.length > 0,
-                                    colorClass: "indigo"
-                                })
-                            )
-                        )
-                    )
-                ),
-
-                // Modals
-                React.createElement(FullScreenSearchModal, {
-                    isOpen: isStoreModalOpen,
-                    onClose: () => setIsStoreModalOpen(false),
-                    items: allStores,
-                    selectedItems: selectedStores,
-                    onSelect: handleStoreSelect,
-                    title: "店舗検索",
-                    icon: Store
-                }),
-                React.createElement(FullScreenSearchModal, {
-                    isOpen: isTypeModalOpen,
-                    onClose: () => setIsTypeModalOpen(false),
-                    items: allTypes,
-                    selectedItems: selectedTypes,
-                    onSelect: handleTypeSelect,
-                    title: "業態で検索",
-                    icon: Layers
-                }),
-                React.createElement(FullScreenSearchModal, {
-                    isOpen: isMonthModalOpen,
-                    onClose: () => setIsMonthModalOpen(false),
-                    items: availableMonths,
-                    selectedItems: selectedMonths,
-                    onSelect: handleMonthSelect,
-                    title: "期間選択",
-                    icon: Calendar
-                }),
-
-                React.createElement("main", { className: "max-w-[1800px] mx-auto p-6 space-y-6" },
-                    
-                    /* 5 KPI Panels Row */
-                    React.createElement("div", { className: "grid grid-cols-2 md:grid-cols-5 gap-3" },
-                        
-                        // 1. 実績売上
-                        React.createElement(Card, { className: "border-l-4 border-l-slate-900 flex flex-col justify-between py-4 shadow-sm" },
-                            React.createElement("div", { className: "flex justify-between items-start mb-2" },
-                                React.createElement("span", { className: "text-[10px] font-bold text-slate-500 uppercase tracking-wider" }, "実績売上"),
-                                React.createElement(DollarSign, { className: "text-slate-300", size: 16 })
-                            ),
-                            React.createElement("div", null,
-                                React.createElement("div", { className: "text-xl md:text-2xl font-bold text-slate-900 tracking-tight" }, formatYen(kpiData.totalSales)),
-                                React.createElement("div", { className: "text-[9px] text-slate-400 font-medium mt-1" }, "選択期間の合計(税抜)")
-                            )
-                        ),
-                        
-                        // 2. オプション売上
-                        React.createElement(Card, { className: "border-l-4 border-l-blue-600 flex flex-col justify-between py-4 shadow-sm" },
-                            React.createElement("div", { className: "flex justify-between items-start mb-2" },
-                                React.createElement("span", { className: "text-[10px] font-bold text-slate-500 uppercase tracking-wider" }, "オプション売上"),
-                                React.createElement(CheckSquare, { className: "text-slate-300", size: 16 })
-                            ),
-                            React.createElement("div", null,
-                                React.createElement("div", { className: "text-xl md:text-2xl font-bold text-blue-900 tracking-tight" }, formatYen(kpiData.totalOptionSales)),
-                                React.createElement("div", { className: "text-[9px] text-slate-400 font-medium mt-1" }, "選択期間の合計(税抜)")
-                            )
-                        ),
-
-                        // 3. 当月の割合
-                        React.createElement(Card, { className: "border-l-4 border-l-indigo-500 flex flex-col justify-between py-4 shadow-sm" },
-                            React.createElement("div", { className: "flex justify-between items-start mb-2" },
-                                React.createElement("span", { className: "text-[10px] font-bold text-slate-500 uppercase tracking-wider" }, "当月の割合"),
-                                React.createElement(Percent, { className: "text-slate-300", size: 16 })
-                            ),
-                            React.createElement("div", null,
-                                React.createElement("div", { className: "text-2xl font-bold text-indigo-900 tracking-tight" }, formatPercent(kpiData.currentRate)),
-                                React.createElement("div", { className: "text-[9px] text-slate-400 font-medium mt-1" }, "実績売上に対する比率")
-                            )
-                        ),
-
-                        // 4. 前月の割合
-                        React.createElement(Card, { className: "border-l-4 border-l-slate-400 flex flex-col justify-between py-4 shadow-sm bg-slate-50/50" },
-                            React.createElement("div", { className: "flex justify-between items-start mb-2" },
-                                React.createElement("span", { className: "text-[10px] font-bold text-slate-500 uppercase tracking-wider" }, "前月の割合"),
-                                React.createElement(Calendar, { className: "text-slate-300", size: 16 })
-                            ),
-                            React.createElement("div", null,
-                                React.createElement("div", { className: "text-2xl font-bold text-slate-600 tracking-tight" }, 
-                                    kpiData.hasPrevData ? formatPercent(kpiData.prevRate) : "-"
-                                ),
-                                React.createElement("div", { className: "text-[9px] text-slate-400 font-medium mt-1" }, "前の期間の実績")
-                            )
-                        ),
-
-                        // 5. 前月比
-                        React.createElement(Card, { className: `border-l-4 ${kpiData.diffRate > 0 ? 'border-l-emerald-500' : 'border-l-rose-500'} flex flex-col justify-between py-4 shadow-sm col-span-2 md:col-span-1` },
-                            React.createElement("div", { className: "flex justify-between items-start mb-2" },
-                                React.createElement("span", { className: "text-[10px] font-bold text-slate-500 uppercase tracking-wider" }, "前月比"),
-                                React.createElement(TrendingUp, { className: "text-slate-300", size: 16 })
-                            ),
-                            React.createElement("div", null,
-                                React.createElement("div", { className: `text-2xl font-black tracking-tight ${kpiData.diffRate > 0 ? 'text-emerald-600' : kpiData.diffRate < 0 ? 'text-rose-600' : 'text-slate-400'}` }, 
-                                    kpiData.hasPrevData 
-                                        ? (kpiData.diffRate > 0 ? '+' : '') + formatPercent(kpiData.diffRate)
-                                        : "-"
-                                ),
-                                React.createElement("div", { className: "text-[9px] text-slate-400 font-medium mt-1" }, "ポイント差")
-                            )
-                        )
-                    ),
-
-                    /* Charts Section (Swichable) */
-                    React.createElement("div", { className: "animate-in fade-in slide-in-from-bottom-4 duration-500 space-y-6" },
-                        
-                        React.createElement("div", { className: "grid grid-cols-1 lg:grid-cols-3 gap-6" },
-                        React.createElement(Card, { className: "lg:col-span-2" },
-                            React.createElement("div", { className: "flex items-center justify-between mb-4" },
-                                React.createElement(SectionTitle, { 
-                                    title: chartMode === 'store' ? "売上の内訳（店舗・業態別）" : "オプション別 売上構成（ランキング）", 
-                                    subtitle: chartMode === 'store' ? "基本売上とオプション売上の構成比" : "売上金額の高い順に表示", 
-                                    icon: BarChart2 
-                                }),
-                                React.createElement("div", { className: "flex bg-slate-100 p-1 rounded-lg" },
-                                    React.createElement("button", {
-                                        onClick: () => setChartMode('store'),
-                                        className: `px-3 py-1.5 text-xs font-bold rounded-md transition-all flex items-center gap-1 ${chartMode === 'store' ? 'bg-white shadow-sm text-slate-900' : 'text-slate-500 hover:text-slate-700'}`
-                                    }, React.createElement(Store, { size: 14 }), "店舗別"),
-                                    React.createElement("button", {
-                                        onClick: () => setChartMode('option'),
-                                        className: `px-3 py-1.5 text-xs font-bold rounded-md transition-all flex items-center gap-1 ${chartMode === 'option' ? 'bg-white shadow-sm text-indigo-600' : 'text-slate-500 hover:text-slate-700'}`
-                                    }, React.createElement(ListOrdered, { size: 14 }), "オプション別")
-                                )
-                            ),
-                            
-                            React.createElement("div", { className: "h-[300px]" },
-                                React.createElement(ResponsiveContainer, { width: "100%", height: "100%" },
-                                    chartMode === 'store' ? (
-                                        // モード1: 店舗別売上（積上げ）
-                                        React.createElement(BarChart, { data: aggregatedData.slice(0, 30), layout: "vertical", margin: { top: 5, right: 30, left: 40, bottom: 5 } },
-                                            React.createElement(CartesianGrid, { strokeDasharray: "3 3", horizontal: false, stroke: COLORS.grid }),
-                                            React.createElement(XAxis, { type: "number", tickFormatter: (val) => `¥${val/10000}万`, tick: {fontSize: 11, fill: COLORS.textSub}, stroke: COLORS.border }),
-                                            React.createElement(YAxis, { dataKey: isTypeMode ? "type" : "store", type: "category", width: 110, tick: {fontSize: 12, fontWeight: 700, fill: COLORS.textMain}, stroke: COLORS.border }),
-                                            React.createElement(RechartsTooltip, { 
-                                                cursor: {fill: '#f1f5f9'},
-                                                contentStyle: { backgroundColor: '#fff', border: '1px solid #cbd5e1', color: '#0f172a' },
-                                                formatter: (value, name) => [formatYen(value), name]
-                                            }),
-                                            React.createElement(Legend, { iconType: "circle", wrapperStyle: {fontSize: '11px', color: COLORS.textSub} }),
-                                            React.createElement(Bar, { dataKey: "baseSales", name: "基本売上", stackId: "a", fill: "#94a3b8", barSize: 20 }),
-                                            React.createElement(Bar, { dataKey: "optionsTotalSales", name: "オプション売上", stackId: "a", fill: "#0f172a", barSize: 20 }),
-                                            React.createElement(Bar, { dataKey: "totalPotential", name: "売上アップの余地", stackId: "a", fill: "#d97706", barSize: 20 })
-                                        )
-                                    ) : (
-                                        // モード2: オプション別ランキング（縦棒・赤グラデーション）
-                                        React.createElement(BarChart, { data: optionRankingData, margin: { top: 5, right: 10, left: 10, bottom: 5 } },
-                                            React.createElement(CartesianGrid, { strokeDasharray: "3 3", vertical: false, stroke: COLORS.grid }),
-                                            React.createElement(XAxis, { dataKey: "name", tick: {fontSize: 10, fill: COLORS.textMain, fontWeight: 700}, interval: 0, angle: -45, textAnchor: "end", height: 60, stroke: COLORS.border }),
-                                            React.createElement(YAxis, { tickFormatter: (val) => `¥${val/10000}万`, tick: {fontSize: 11, fill: COLORS.textSub}, stroke: COLORS.border }),
-                                            React.createElement(RechartsTooltip, { 
-                                                cursor: {fill: '#f1f5f9'},
-                                                contentStyle: { backgroundColor: '#fff', border: '1px solid #cbd5e1', color: '#0f172a' },
-                                                formatter: (value) => [formatYen(value), "売上"]
-                                            }),
-                                            React.createElement(Bar, { dataKey: "sales", name: "売上", barSize: 40, radius: [4, 4, 0, 0] },
-                                                optionRankingData.map((entry, index) => (
-                                                    React.createElement(Cell, { key: `cell-${index}`, fill: getRankingColor(index) })
-                                                ))
-                                            )
-                                        )
-                                    )
-                                )
-                            )
-                        ),
-
-                        React.createElement(Card, null,
-                            React.createElement(SectionTitle, { title: "売上の推移", subtitle: "期間中の合計売上の変化", icon: TrendingUp }),
-                            React.createElement("div", { className: "h-[300px]" },
-                            React.createElement(ResponsiveContainer, { width: "100%", height: "100%" },
-                                // エリアチャートからバーチャート（棒グラフ）に変更して視認性を向上
-                                React.createElement(BarChart, { data: trendData, margin: { top: 10, right: 10, left: 0, bottom: 0 } },
-                                    React.createElement(CartesianGrid, { strokeDasharray: "3 3", vertical: false, stroke: "#e2e8f0" }),
-                                    React.createElement(XAxis, { dataKey: "month", tick: {fontSize: 11, fill: COLORS.textSub}, stroke: COLORS.border }),
-                                    React.createElement(YAxis, { tickFormatter: (val) => `${val/10000}万`, tick: {fontSize: 11, fill: COLORS.textSub}, stroke: COLORS.border }),
-                                    React.createElement(RechartsTooltip, { 
-                                        formatter: (value) => formatYen(value), 
-                                        contentStyle: { backgroundColor: '#fff', border: '1px solid #cbd5e1', color: '#0f172a', borderRadius: '8px', boxShadow: '0 4px 6px -1px rgb(0 0 0 / 0.1)' },
-                                        cursor: {fill: '#f8fafc', opacity: 0.8}
-                                    }),
-                                    React.createElement(Bar, { 
-                                        dataKey: "sales", 
-                                        name: "合計売上", 
-                                        fill: "#0f172a", // シックなダークブルー
-                                        radius: [4, 4, 0, 0], // 角丸でモダンに
-                                        barSize: 40
-                                    })
-                                )
-                            )
-                            )
-                        )
-                        ),
-
-                        /* Matrix Table */
-                        React.createElement(Card, { noPadding: true, className: "overflow-hidden shadow-sm border border-slate-300" },
-                        React.createElement("div", { className: "p-4 border-b border-slate-200 flex flex-col md:flex-row justify-between items-start md:items-center gap-4 bg-white" },
-                            React.createElement(SectionTitle, { 
-                            title: "オプション売上一覧表", 
-                            subtitle: "各項目の売上(税別)とシェア率", 
-                            icon: Activity 
-                            }),
-                            
-                            React.createElement("div", { className: "flex items-center gap-2" },
-                            focusedOption && (
-                                React.createElement("button", { 
-                                onClick: () => setFocusedOption(null),
-                                className: "flex items-center gap-1 text-[10px] font-bold text-slate-600 hover:text-slate-900 bg-slate-100 px-3 py-1.5 rounded-full transition-colors mr-2 border border-slate-200"
-                                },
-                                React.createElement(X, { size: 12 }), ` 解除: ${focusedOption}`
-                                )
-                            ),
-                            React.createElement("div", { className: "flex items-center bg-slate-100 p-0.5 rounded text-[10px] border border-slate-200" },
-                                React.createElement("button", { 
-                                onClick: () => setPotentialBenchmark('TOP'),
-                                className: `px-3 py-1 rounded-sm font-bold transition-all ${potentialBenchmark === 'TOP' ? 'bg-white shadow-sm text-slate-900' : 'text-slate-500 hover:text-slate-700'}`
-                                }, "vs トップ水準"),
-                                React.createElement("button", { 
-                                onClick: () => setPotentialBenchmark('AVG'),
-                                className: `px-3 py-1 rounded-sm font-bold transition-all ${potentialBenchmark === 'AVG' ? 'bg-white shadow-sm text-slate-900' : 'text-slate-500 hover:text-slate-700'}`
-                                }, "vs 平均水準")
-                            )
-                            )
-                        ),
-                        
-                        React.createElement("div", { className: "overflow-x-auto" },
-                            React.createElement("table", { className: "w-full text-left border-collapse text-xs" },
-                            React.createElement("thead", null,
-                                React.createElement("tr", { className: "bg-slate-100 text-slate-600 font-bold border-b border-slate-300" },
-                                React.createElement("th", { className: "py-3 px-4 sticky left-0 bg-slate-100 border-r border-slate-300 min-w-[180px] z-10 text-slate-700" }, "オプション項目"),
-                                aggregatedData.map(d => (
-                                    React.createElement("th", { key: d.id, className: "py-3 px-2 text-center min-w-[120px] border-r border-slate-200 last:border-0" },
-                                    React.createElement("div", { className: `font-bold ${isTypeMode ? 'text-indigo-900' : 'text-slate-900'}` }, d.store),
-                                    React.createElement("div", { className: "mt-1 text-[9px] font-bold text-amber-700 bg-amber-50 px-1 py-0.5 rounded inline-block border border-amber-100" },
-                                        `+${formatYen(d.totalPotential)}`
-                                    )
-                                    )
-                                ))
-                                )
-                            ),
-                            React.createElement("tbody", null,
-                                OPTION_NAMES.map((optName) => {
-                                const isSelected = focusedOption === optName;
-                                return (
-                                    React.createElement("tr", { 
-                                    key: optName, 
-                                    onClick: () => setFocusedOption(isSelected ? null : optName),
-                                    className: `border-b border-slate-200 transition-all cursor-pointer group ${isSelected ? 'bg-blue-50/50' : 'hover:bg-slate-50'}`
-                                    },
-                                    React.createElement("td", { className: `py-2 px-4 font-bold border-r border-slate-300 sticky left-0 transition-colors z-10 ${isSelected ? 'bg-blue-50 text-blue-800 border-r-blue-200' : 'bg-white text-slate-800 group-hover:bg-slate-50'}` },
-                                        React.createElement("div", { className: "flex items-center justify-between" },
-                                        optName,
-                                        isSelected && React.createElement(ArrowUpRight, { size: 12, className: "text-blue-600" })
-                                        )
-                                    ),
-                                    aggregatedData.map(d => {
-                                        const optData = d[optName];
-                                        const ratio = optData?.ratio || 0;
-                                        const isAlert = optData?.active && ratio < (optData?.avgRatio * 0.8);
-                                        const intensity = Math.min(ratio / 0.3, 1); 
-                                        const bgStyle = optData?.active 
-                                        ? `rgba(15, 23, 42, ${0.05 + intensity * 0.15})` 
-                                        : 'transparent';
-                                        
-                                        return (
-                                        React.createElement("td", { key: `${d.id}-${optName}`, className: "py-2 px-2 text-center border-r border-slate-100 last:border-0 p-0 relative" },
-                                            optData?.active ? (
-                                            React.createElement("div", { className: "w-full h-full py-2 flex flex-col items-center justify-center relative gap-0.5", style: { backgroundColor: bgStyle } },
-                                                isAlert && React.createElement("div", { className: "w-2 h-2 bg-red-500 rounded-full absolute top-1 right-1 animate-pulse", title: "平均を大きく下回っています" }),
-                                                // 売上金額を追加
-                                                React.createElement("span", { className: "text-[11px] font-bold text-slate-800" }, formatYen(optData.sales)),
-                                                // パーセンテージ
-                                                React.createElement("span", { className: `text-[10px] font-mono ${ratio > 0.25 ? 'text-slate-900 font-bold' : 'text-slate-500'}` }, formatPercent(ratio))
-                                            )
-                                            ) : (
-                                            React.createElement("div", { className: "w-full h-full flex justify-center items-center opacity-20" },
-                                                React.createElement("div", { className: "w-1 h-1 rounded-full bg-slate-300" })
-                                            )
-                                            )
-                                        )
-                                        );
-                                    })
-                                    )
-                                );
-                                })
-                            )
-                            )
-                        )
-                        ),
-
-                        /* Drill Down */
-                        focusedOption && (
-                        React.createElement("div", { className: "grid grid-cols-1 md:grid-cols-2 gap-6 animate-in zoom-in-95 duration-300" },
-                            React.createElement(Card, { className: "border-t-4 border-t-blue-600 shadow-md" },
-                            React.createElement(SectionTitle, { title: `${focusedOption} - 平均売上`, icon: DollarSign }),
-                            React.createElement("div", { className: "h-[200px]" },
-                                React.createElement(ResponsiveContainer, { width: "100%", height: "100%" },
-                                React.createElement(BarChart, { data: aggregatedData, layout: "vertical", margin: {left: 40} },
-                                    React.createElement(CartesianGrid, { strokeDasharray: "3 3", horizontal: false, stroke: COLORS.grid }),
-                                    React.createElement(XAxis, { type: "number", hide: true }),
-                                    React.createElement(YAxis, { dataKey: isTypeMode ? "type" : "store", type: "category", width: 100, tick: {fontSize: 10, fill: COLORS.textMain, fontWeight: 700}, stroke: COLORS.border }),
-                                    React.createElement(RechartsTooltip, { formatter: (val) => formatYen(val), contentStyle: { backgroundColor: '#fff', border: '1px solid #cbd5e1' } }),
-                                    React.createElement(Bar, { dataKey: `${focusedOption}.sales`, fill: "#2563eb", barSize: 24, radius: [0, 4, 4, 0] })
-                                )
-                                )
-                            )
-                            ),
-                            React.createElement(Card, { className: "border-t-4 border-t-amber-500 shadow-md" },
-                            React.createElement(SectionTitle, { title: `${focusedOption} - 売上アップの余地`, subtitle: "基準値までの伸び代", icon: Sparkles }),
-                            React.createElement("div", { className: "h-[200px]" },
-                                React.createElement(ResponsiveContainer, { width: "100%", height: "100%" },
-                                React.createElement(BarChart, { data: aggregatedData, margin: {top: 10} },
-                                    React.createElement(CartesianGrid, { strokeDasharray: "3 3", vertical: false, stroke: COLORS.grid }),
-                                    React.createElement(XAxis, { dataKey: isTypeMode ? "type" : "store", tick: {fontSize: 10, fill: COLORS.textSub}, interval: 0, stroke: COLORS.border }),
-                                    React.createElement(YAxis, { tickFormatter: (val) => `¥${val/10000}万`, tick: {fontSize: 10, fill: COLORS.textSub}, stroke: COLORS.border }),
-                                    React.createElement(RechartsTooltip, { formatter: (val) => formatYen(val), contentStyle: { backgroundColor: '#fff', border: '1px solid #cbd5e1' } }),
-                                    React.createElement(Bar, { dataKey: `${focusedOption}.potential`, name: "伸び代", fill: "#d97706", barSize: 32, radius: [4, 4, 0, 0] })
-                                )
-                                )
-                            )
-                            )
-                        )
-                        )
-                    )
-                )
-                )
-            );
+          }
         }
+      });
 
-        // Reactマウント処理
-        const root = createRoot(document.getElementById('root'));
-        root.render(React.createElement(SalesDashboard));
-    </script>
+      const listBody = document.getElementById('reasonListBody');
+      listBody.innerHTML = '';
+      sortedReasons.forEach(item => {
+        const [reason, count] = item;
+        const pct = ((count / total) * 100).toFixed(1);
+        const color = colorMap[reason];
+        
+        listBody.innerHTML += `
+          <tr class="group hover:bg-zinc-800/50 transition-colors">
+            <td class="py-2.5 pr-2">
+              <div class="flex items-center gap-2">
+                <span class="w-2 h-2 rounded-full" style="background:${color}"></span>
+                <span class="text-sm text-gray-300 group-hover:text-white truncate">${reason}</span>
+              </div>
+              <div class="w-full bg-zinc-800 h-1 mt-1.5 rounded-full overflow-hidden">
+                <div class="h-full rounded-full" style="width:${pct}%; background:${color}"></div>
+              </div>
+            </td>
+            <td class="py-2.5 text-right font-mono text-zinc-400 group-hover:text-white">${count}</td>
+            <td class="py-2.5 text-right font-mono text-white font-medium">${pct}%</td>
+          </tr>
+        `;
+      });
+
+      if (rangeMonths.length >= 2) {
+        const last = rangeMonths[rangeMonths.length - 1];
+        const prev = rangeMonths[rangeMonths.length - 2];
+        const lData = data.filter(d => d.yearMonth === last);
+        const pData = data.filter(d => d.yearMonth === prev);
+        
+        let maxDiff = -Infinity, surgeReason = "変化なし";
+        
+        reasonKeys.forEach(r => {
+          const lShare = lData.length ? (lData.filter(d=>(d.reason||'')===r).length / lData.length)*100 : 0;
+          const pShare = pData.length ? (pData.filter(d=>(d.reason||'')===r).length / pData.length)*100 : 0;
+          const diff = lShare - pShare;
+          if (diff > maxDiff && diff > 0) { maxDiff = diff; surgeReason = r; }
+        });
+
+        if (maxDiff > 0) {
+          document.getElementById('surgingReason').innerText = surgeReason;
+          document.getElementById('surgingTrend').innerHTML = `<span class="text-xs text-red-400 font-medium">▲ +${maxDiff.toFixed(1)}pt シェア拡大</span>`;
+        } else {
+          document.getElementById('surgingReason').innerText = "安定";
+          document.getElementById('surgingTrend').innerText = "顕著な急増なし";
+        }
+      }
+
+      const tBody = document.querySelector('#dataTable tbody');
+      tBody.innerHTML = '';
+      data.slice(0, 50).forEach(d => {
+        tBody.innerHTML += `
+          <tr class="hover:bg-zinc-800/50 transition-colors group">
+            <td class="px-4 py-3 text-zinc-400 group-hover:text-white">${d.yearMonth}</td>
+            <td class="px-4 py-3 text-white font-medium">${d.name}</td>
+            <td class="px-4 py-3 text-zinc-400">${d.reason}</td>
+            <td class="px-4 py-3 text-zinc-400">${d.frequency}</td>
+            <td class="px-4 py-3 text-right text-zinc-500 text-xs font-mono">${d.timestamp || '-'}</td>
+          </tr>
+        `;
+      });
+    }
+
+    // --- AI Report ---
+    function openAIReport() {
+      const modal = document.getElementById('aiModal');
+      const content = document.getElementById('aiModalContent');
+      const text = document.getElementById('aiReportContent');
+      
+      modal.classList.remove('hidden');
+      requestAnimationFrame(() => {
+        modal.classList.remove('opacity-0');
+        content.classList.remove('scale-95');
+      });
+
+      text.innerHTML = `
+        <div class="flex flex-col items-center justify-center py-12 space-y-4">
+          <div class="w-8 h-8 border-2 border-zinc-700 border-t-purple-500 rounded-full animate-spin"></div>
+          <div class="text-sm text-zinc-400 animate-pulse">データを分析中...</div>
+        </div>
+      `;
+      
+      setTimeout(() => {
+        text.innerHTML = generateAIContent(filteredData);
+      }, 1000);
+    }
+
+    function closeAIReport() {
+      const modal = document.getElementById('aiModal');
+      const content = document.getElementById('aiModalContent');
+      
+      modal.classList.add('opacity-0');
+      content.classList.add('scale-95');
+      setTimeout(() => modal.classList.add('hidden'), 300);
+    }
+
+    function generateAIContent(data) {
+      if(!data.length) return "データがありません。";
+      const top = currentSortedReasons[0];
+      return `
+        <div class="space-y-6">
+          <div class="bg-zinc-900/50 p-4 rounded-lg border border-zinc-800">
+            <h4 class="text-sm font-bold text-white uppercase tracking-wider mb-2">エグゼクティブサマリー</h4>
+            <p class="text-sm">
+              現在、退会の最大要因は <strong class="text-white">「${top ? top[0] : 'なし'}」</strong> であり、
+              選択された期間全体の <strong class="text-white">${top ? ((top[1]/data.length)*100).toFixed(1) : 0}%</strong> を占めています。
+              この要因に対する対策が、最も費用対効果の高い退会抑止策となります。
+            </p>
+          </div>
+          
+          <div>
+            <h4 class="text-sm font-bold text-zinc-400 uppercase tracking-wider mb-2">推奨アクション</h4>
+            <ul class="space-y-3">
+              <li class="flex gap-3 text-sm">
+                <span class="w-1.5 h-1.5 mt-1.5 rounded-full bg-green-500 shrink-0"></span>
+                <span><strong>「${top ? top[0] : ''}」</strong> を理由とする会員への優先的なヒアリングを実施し、根本原因を特定してください。</span>
+              </li>
+              <li class="flex gap-3 text-sm">
+                <span class="w-1.5 h-1.5 mt-1.5 rounded-full bg-blue-500 shrink-0"></span>
+                <span>「月次シェア推移」グラフを注視してください。明るい色（上位理由）のバーが縦に拡大している場合、その問題が相対的に悪化していることを示します。</span>
+              </li>
+            </ul>
+          </div>
+        </div>
+      `;
+    }
+
+    function exportData() {
+      if (typeof google !== 'undefined' && google.script) {
+        google.script.run
+          .withSuccessHandler(sn => alert(`出力完了: ${sn}`))
+          .saveReportToSheet(filteredData);
+      } else {
+        alert("プレビューモード: 出力不可");
+      }
+    }
+
+    function showError(msg) {
+      document.getElementById('loader').innerHTML = `<div class="text-red-500 font-mono text-sm">${msg}</div>`;
+    }
+
+    function generateMockData() {
+      const reasons = ["引越し・転勤", "仕事の都合", "金銭的理由", "家庭の事情", "他クラブ移籍", "飽きた・モチベーション低下", "健康上の理由"];
+      const m = ["2025年10月", "2025年11月", "2025年12月", "2026年01月", "2026年02月"];
+      let d = [];
+      for(let i=0; i<150; i++) {
+        const mm = m[Math.floor(Math.random()*m.length)];
+        let r = Math.random() > 0.6 && mm === "2026年02月" ? "仕事の都合" : reasons[Math.floor(Math.random()*reasons.length)];
+        d.push({
+          yearMonth: mm, name: "サンプル会員 "+i, reason: r, frequency: "週2回", timestamp: "2026/02/19"
+        });
+      }
+      return d;
+    }
+  </script>
 </body>
 </html>
