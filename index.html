@@ -1,562 +1,297 @@
 <!DOCTYPE html>
-<html lang="ja" class="dark">
+<html lang="ja">
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <base target="_top">
-  
-  <!-- Tailwind CSS -->
+  <title>経堂シフト閲覧ポータル | Kyodo Shift Dashboard</title>
+  <!-- React & Tailwind CDN -->
+  <script src="https://unpkg.com/react@18/umd/react.production.min.js" crossorigin></script>
+  <script src="https://unpkg.com/react-dom@18/umd/react-dom.production.min.js" crossorigin></script>
+  <script src="https://unpkg.com/@babel/standalone/babel.min.js"></script>
   <script src="https://cdn.tailwindcss.com"></script>
-  <!-- Chart.js -->
-  <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
-  <!-- Google Fonts: Inter & Noto Sans JP -->
-  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;600;700&family=Noto+Sans+JP:wght@400;500;700&display=swap" rel="stylesheet">
-  <!-- Icons -->
-  <link href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css" rel="stylesheet">
-
-  <script>
-    tailwind.config = {
-      darkMode: 'class',
-      theme: {
-        extend: {
-          fontFamily: {
-            sans: ['Noto Sans JP', 'Inter', 'sans-serif'],
-            mono: ['ui-monospace', 'SFMono-Regular', 'Menlo', 'monospace'],
-          },
-          colors: {
-            background: '#09090b',
-            surface: '#18181b',
-            border: '#27272a',
-            primary: '#fafafa',
-            secondary: '#a1a1aa',
-          }
-        }
-      }
-    }
-  </script>
-
   <style>
-    ::-webkit-scrollbar { width: 6px; height: 6px; }
-    ::-webkit-scrollbar-track { background: transparent; }
-    ::-webkit-scrollbar-thumb { background: #3f3f46; border-radius: 3px; }
-    ::-webkit-scrollbar-thumb:hover { background: #52525b; }
-    .loader-spin { animation: spin 1s linear infinite; }
-    @keyframes spin { from { transform: rotate(0deg); } to { transform: rotate(360deg); } }
-    .chart-box { position: relative; height: 300px; width: 100%; }
+    @import url('https://fonts.googleapis.com/css2?family=Noto+Sans+JP:wght@400;700;900&family=Roboto:wght@700&display=swap');
+    
+    body { font-family: 'Noto Sans JP', sans-serif; background-color: #ffffff; color: #1e293b; margin: 0; padding: 0; }
+
+    /* 印刷設定: A4横・2段組 */
+    @media print {
+      @page { size: A4 landscape; margin: 5mm; }
+      body { background-color: white; -webkit-print-color-adjust: exact; print-color-adjust: exact; }
+      .no-print { display: none !important; }
+      .print-container { padding: 0 !important; width: 100% !important; max-width: none !important; }
+      .page-break { break-after: page; page-break-after: always; height: 0; display: block; }
+      .table-wrapper { border: 2px solid #94a3b8 !important; border-radius: 0 !important; overflow: visible !important; }
+      th, td { border: 1px solid #94a3b8 !important; }
+      .bg-red-50 { background-color: #fef2f2 !important; }
+      .bg-blue-50 { background-color: #eff6ff !important; }
+    }
+
+    /* 名前セル: 幅固定・中央揃え */
+    .name-cell { 
+      background-color: #ffffff !important; 
+      width: 140px !important; min-width: 140px !important;
+      font-size: 1.2rem; font-weight: 900;
+      text-align: center !important; vertical-align: middle !important;
+      color: #1e293b; border-right: 3px solid #C21642 !important;
+      white-space: nowrap; overflow: hidden;
+    }
+    
+    /* 勤務時間バッジ */
+    .time-badge { 
+      display: inline-flex; align-items: center; justify-content: center;
+      color: #1f2937; font-family: 'Roboto', sans-serif; font-size: 0.75rem; letter-spacing: -0.05em;
+      font-weight: 900; line-height: 1; white-space: nowrap; padding: 2px 4px; width: 100%;
+    }
+
+    /* メモテキスト */
+    .memo-text {
+      font-size: 0.7rem; color: #334155; font-weight: 700; line-height: 1.2;
+      display: block; overflow: hidden; white-space: nowrap; text-overflow: ellipsis; text-align: center;
+    }
+
+    .holiday-x { color: #dc2626; font-size: 1.1rem; font-weight: 700; opacity: 0.7; }
+    .paid-leave { color: #059669; font-weight: 900; font-size: 0.85rem; background: #d1fae5; padding: 2px 6px; border-radius: 4px; }
+    
+    /* 行・セル設定 */
+    .row-shift { height: 40px; }
+    .row-memo { height: 60px; } /* メモ欄を広く */
+    .day-cell {
+      width: 90px !important; min-width: 90px !important; max-width: 90px !important;
+      padding: 2px 4px !important; vertical-align: middle; text-align: center;
+    }
+    
+    .text-sun { color: #dc2626 !important; }
+    .text-sat { color: #2563eb !important; }
+    .bg-sun { background-color: #fef2f2 !important; }
+    .bg-sat { background-color: #eff6ff !important; }
+
+    .table-title {
+      font-size: 1.4rem; font-weight: 900; color: #C21642;
+      padding: 8px 20px; background-color: #fff1f2; border-left: 8px solid #C21642;
+      margin-bottom: 15px; display: inline-block;
+    }
+
+    .tier-container { margin-bottom: 0; page-break-inside: avoid; }
+    .stats-cell { background-color: #f8fafc !important; font-weight: 900; font-size: 0.8rem !important; }
+    
+    .loader {
+      border: 4px solid #f3f3f3; border-top: 4px solid #C21642; border-radius: 50%;
+      width: 40px; height: 40px; animation: spin 1s linear infinite; display: inline-block;
+    }
+    @keyframes spin { 0% { transform: rotate(0deg); } 100% { transform: rotate(360deg); } }
   </style>
 </head>
-<body class="bg-background text-primary font-sans h-screen flex flex-col overflow-hidden antialiased selection:bg-white selection:text-black">
+<body>
+  <div id="root"></div>
 
-  <!-- Loader -->
-  <div id="loader" class="fixed inset-0 z-50 bg-background flex flex-col items-center justify-center">
-    <div class="w-8 h-8 border-2 border-border border-t-white rounded-full loader-spin mb-4"></div>
-    <div class="text-xs text-secondary tracking-widest uppercase">システム起動中...</div>
-  </div>
+  <script type="text/babel">
+    const { useState, useEffect, Fragment } = React;
 
-  <!-- Header -->
-  <header class="h-14 border-b border-border bg-background/50 backdrop-blur-md flex items-center justify-between px-6 shrink-0 z-10">
-    <div class="flex items-center gap-3">
-      <div class="w-2 h-6 bg-white rounded-sm"></div>
-      <h1 class="font-bold text-lg tracking-tight">退会分析 <span class="text-secondary font-normal text-sm ml-2 hidden sm:inline">PRO DASHBOARD</span></h1>
-    </div>
-    <button onclick="openAIReport()" class="group flex items-center gap-2 px-4 py-1.5 bg-white text-black text-xs font-bold rounded-full hover:bg-gray-200 transition-all shadow-[0_0_15px_rgba(255,255,255,0.1)] hover:shadow-[0_0_20px_rgba(255,255,255,0.3)]">
-      <i class="fas fa-sparkles text-purple-600 group-hover:animate-pulse"></i>
-      <span>AIインサイト分析</span>
-    </button>
-  </header>
+    const CONFIG = {
+      // ★提供されたGASのデプロイURLを設定済み
+      GAS_API_URL: "https://script.google.com/macros/s/AKfycbyLLX4EzfuvswXUgFwL19U8ZeZcuQ4pr287p-etGdEwG3Ej6kFMCAqkqR2hlr1FvaEo/exec" 
+    };
 
-  <div class="flex flex-1 overflow-hidden">
-    <!-- Sidebar -->
-    <aside class="w-64 border-r border-border bg-background flex flex-col p-5 gap-8 overflow-y-auto shrink-0 hidden md:flex">
+    /**
+     * データ整形関数
+     */
+    function formatCellContent(value) {
+      if (!value) return "";
+      const str = String(value);
+      if (str === '×' || str === '公休' || str === '休') return <span className="holiday-x">×</span>;
+      if (str.includes('有給') || str.includes('有休')) return <span className="paid-leave">有給</span>;
       
-      <!-- Period Filter -->
-      <div class="space-y-3">
-        <h3 class="text-xs font-semibold text-secondary uppercase tracking-wider">分析期間 (Period)</h3>
-        <div class="space-y-1">
-          <button onclick="togglePeriod(3, this)" class="period-btn w-full flex items-center justify-between px-3 py-2 text-sm text-secondary hover:text-primary hover:bg-surface rounded-md transition-colors group">
-            <span>直近 3ヶ月</span>
-            <span class="w-1.5 h-1.5 rounded-full bg-current opacity-0 group-[.active]:opacity-100"></span>
-          </button>
-          <button onclick="togglePeriod(6, this)" class="period-btn w-full flex items-center justify-between px-3 py-2 text-sm text-secondary hover:text-primary hover:bg-surface rounded-md transition-colors group">
-            <span>直近 6ヶ月</span>
-            <span class="w-1.5 h-1.5 rounded-full bg-current opacity-0 group-[.active]:opacity-100"></span>
-          </button>
-          <button onclick="togglePeriod(12, this)" class="period-btn w-full flex items-center justify-between px-3 py-2 text-sm text-secondary hover:text-primary hover:bg-surface rounded-md transition-colors group">
-            <span>直近 1年</span>
-            <span class="w-1.5 h-1.5 rounded-full bg-current opacity-0 group-[.active]:opacity-100"></span>
-          </button>
+      // 変な英語の日付対策
+      if (str.includes("GMT") || (str.match(/[A-Za-z]{3}\s[A-Za-z]{3}/) && str.length > 10)) {
+        try {
+          const d = new Date(str);
+          if (!isNaN(d.getTime())) {
+            const h = d.getHours();
+            const m = d.getMinutes();
+            if (h === 0 && m === 0) return <span className="text-xs text-gray-400 font-bold">{d.getDate()}日</span>;
+            const timeStr = `${h}:${m.toString().padStart(2, '0')}`;
+            return <div className="time-badge">{timeStr}</div>;
+          }
+        } catch (e) { return <span className="text-[8px] text-red-300">Err</span>; }
+      }
+
+      // 数字を含む場合（時間）
+      if (/\d/.test(str)) return <div className="time-badge">{str}</div>;
+      return <span className="text-xs font-bold text-gray-500">{str}</span>;
+    }
+
+    function App() {
+      const [data, setData] = useState(null);
+      const [loading, setLoading] = useState(true);
+      const [error, setError] = useState(null);
+
+      useEffect(() => {
+        const fetchData = async () => {
+          try {
+            if (CONFIG.GAS_API_URL.includes("YOUR_GAS")) throw new Error("GASのURLが設定されていません。index.htmlを編集してください。");
+            
+            const res = await fetch(CONFIG.GAS_API_URL);
+            const json = await res.json();
+            if (json.error) throw new Error(json.error);
+            setData(json);
+          } catch (err) {
+            setError(err.message || "データ取得エラー");
+          } finally {
+            setLoading(false);
+          }
+        };
+        fetchData();
+      }, []);
+
+      if (loading) return (
+        <div className="min-h-screen flex flex-col items-center justify-center space-y-4">
+          <div className="loader"></div>
+          <p className="font-bold text-gray-400 tracking-widest text-xs">LOADING...</p>
         </div>
-      </div>
+      );
 
-      <!-- Custom Range -->
-      <div class="space-y-3">
-        <h3 class="text-xs font-semibold text-secondary uppercase tracking-wider">期間指定 (Custom)</h3>
-        <div class="flex flex-col gap-2">
-          <select id="startMonth" onchange="customFilter()" class="w-full bg-surface border border-border text-xs rounded-md px-3 py-2 focus:ring-1 focus:ring-white focus:border-white outline-none"></select>
-          <div class="text-center text-border text-[10px] transform rotate-90 sm:rotate-0">|</div>
-          <select id="endMonth" onchange="customFilter()" class="w-full bg-surface border border-border text-xs rounded-md px-3 py-2 focus:ring-1 focus:ring-white focus:border-white outline-none"></select>
+      if (error) return (
+        <div className="p-10 text-center">
+          <p className="text-red-500 font-bold mb-4">{error}</p>
+          <button onClick={() => window.location.reload()} className="bg-gray-200 px-4 py-2 rounded">Retry</button>
         </div>
-      </div>
+      );
 
-      <div class="mt-auto pt-6 border-t border-border">
-        <button onclick="exportData()" class="w-full flex items-center justify-center gap-2 px-4 py-2 border border-border text-secondary text-xs font-medium rounded-md hover:bg-surface hover:text-white transition-colors">
-          <i class="fas fa-download"></i> CSVデータ出力
-        </button>
-      </div>
-    </aside>
+      return (
+        <div className="p-2 md:p-6 print:p-0">
+          <div className="max-w-full mx-auto">
+            {/* ヘッダー */}
+            <header className="flex justify-between items-end mb-6 no-print border-b pb-4">
+              <h1 className="text-3xl font-black text-gray-800">{data.month}</h1>
+              <div className="text-sm text-gray-500 font-bold">
+                ※印刷時は「横向き」「倍率: 用紙に合わせる」に設定してください
+              </div>
+              <button onClick={() => window.print()} className="bg-gray-900 text-white px-6 py-3 rounded-lg font-bold hover:bg-black transition shadow-lg">
+                印刷する (A4横)
+              </button>
+            </header>
 
-    <!-- Main Dashboard -->
-    <main class="flex-1 p-6 overflow-y-auto space-y-6 bg-[#0c0c0e]">
-      
-      <!-- KPI Grid -->
-      <div class="grid grid-cols-1 md:grid-cols-3 gap-4">
-        <!-- KPI 1 -->
-        <div class="bg-surface border border-border rounded-lg p-5 flex flex-col justify-between hover:border-zinc-700 transition-colors">
-          <div class="flex justify-between items-start">
-            <span class="text-xs font-medium text-secondary uppercase">期間内 退会総数</span>
-            <i class="fas fa-users text-zinc-700 text-sm"></i>
-          </div>
-          <div class="mt-4">
-            <div id="totalWithdrawals" class="text-3xl font-bold tracking-tight font-mono">-</div>
-            <div class="text-xs text-secondary mt-1">件</div>
-          </div>
-        </div>
-
-        <!-- KPI 2 -->
-        <div class="bg-surface border border-border rounded-lg p-5 flex flex-col justify-between hover:border-zinc-700 transition-colors">
-          <div class="flex justify-between items-start">
-            <span class="text-xs font-medium text-secondary uppercase">最大理由 (シェア)</span>
-            <i class="fas fa-chart-pie text-zinc-700 text-sm"></i>
-          </div>
-          <div class="mt-4">
-            <div id="topReason" class="text-xl font-bold tracking-tight truncate">-</div>
-            <div class="flex items-center gap-2 mt-1">
-              <span id="topReasonShare" class="text-white font-mono font-bold">-</span>
-              <span class="text-xs text-secondary">% の構成比</span>
-            </div>
-          </div>
-        </div>
-
-        <!-- KPI 3 -->
-        <div class="bg-surface border border-border rounded-lg p-5 flex flex-col justify-between hover:border-zinc-700 transition-colors">
-          <div class="flex justify-between items-start">
-            <span class="text-xs font-medium text-secondary uppercase">急増アラート</span>
-            <i class="fas fa-arrow-trend-up text-zinc-700 text-sm"></i>
-          </div>
-          <div class="mt-4">
-            <div id="surgingReason" class="text-xl font-bold tracking-tight text-white">-</div>
-            <div id="surgingTrend" class="text-xs mt-1">-</div>
-          </div>
-        </div>
-      </div>
-
-      <!-- Charts Section -->
-      <div class="grid grid-cols-1 lg:grid-cols-3 gap-6 h-[400px]">
-        <!-- Stacked Bar (Wide) -->
-        <div class="lg:col-span-2 bg-surface border border-border rounded-lg p-5 flex flex-col">
-          <div class="flex items-center justify-between mb-4">
-            <h3 class="text-sm font-semibold">月次シェア推移 (100%積上)</h3>
-            <span class="text-[10px] text-secondary border border-border px-2 py-0.5 rounded bg-background">構成比トレンド</span>
-          </div>
-          <div class="flex-1 min-h-0 chart-box">
-            <canvas id="trendChart"></canvas>
+            <main>
+              {/* 1ページ目: 上旬 (1日〜15日) */}
+              <ShiftTierTable data={data} start={0} end={15} label="上旬 (1日〜15日)" />
+              
+              {/* 強制改ページ */}
+              <div className="page-break"></div>
+              
+              {/* 2ページ目: 下旬 (16日〜末日) + 集計 */}
+              <ShiftTierTable data={data} start={15} end={data.dates.length} label="下旬 (16日〜末日)" showStats={true} />
+            </main>
           </div>
         </div>
+      );
+    }
 
-        <!-- Ranking List (Narrow) -->
-        <div class="bg-surface border border-border rounded-lg p-5 flex flex-col">
-          <h3 class="text-sm font-semibold mb-4">理由別ランキング</h3>
-          <div class="flex-1 overflow-y-auto pr-1">
-            <table class="w-full text-left border-collapse">
-              <thead class="text-[10px] text-secondary uppercase tracking-wider sticky top-0 bg-surface">
-                <tr>
-                  <th class="pb-2 font-medium">理由</th>
-                  <th class="pb-2 text-right font-medium">件数</th>
-                  <th class="pb-2 text-right font-medium">%</th>
+    function ShiftTierTable({ data, start, end, label, showStats = false }) {
+      const datesInRange = data.dates.slice(start, end);
+      const dowsInRange = data.dows.slice(start, end);
+
+      return (
+        <div className="tier-container">
+          <div className="table-title">{label}</div>
+          <div className="table-wrapper border border-gray-400 overflow-hidden">
+            <table className="w-full border-collapse bg-white table-fixed">
+              <colgroup>
+                <col style={{width: '140px'}} /> {/* 名前列 */}
+                {datesInRange.map((_, i) => <col key={i} style={{width: '90px'}} />)} {/* 日付列: 90pxに拡大 */}
+                {showStats && (
+                  <>
+                    <col style={{width: '60px'}} />
+                    <col style={{width: '40px'}} />
+                    <col style={{width: '40px'}} />
+                  </>
+                )}
+              </colgroup>
+              <thead>
+                {/* 日付行 */}
+                <tr className="bg-white border-b border-gray-300 h-10">
+                  <th className="empty-corner border-r-[3px] border-[#C21642]"></th>
+                  {datesInRange.map((d, i) => (
+                    <th key={i} className="text-[0.85rem] font-bold text-gray-700 border-l border-gray-300">{d}</th>
+                  ))}
+                  {showStats && <th colSpan={3} className="bg-gray-800 text-white text-[10px] font-bold">集計</th>}
+                </tr>
+                {/* 曜日行 */}
+                <tr className="bg-slate-50 border-b border-gray-300 h-8">
+                  <td className="empty-corner border-r-[3px] border-[#C21642]"></td>
+                  {dowsInRange.map((dw, i) => {
+                    const cls = dw === '日' ? 'text-sun bg-red-50' : dw === '土' ? 'text-sat bg-blue-50' : 'text-gray-500';
+                    return <td key={i} className={`text-[0.8rem] font-bold border-l border-gray-300 text-center ${cls}`}>{dw}</td>;
+                  })}
+                  {showStats && (
+                    <>
+                      <td className="bg-gray-100 text-[9px] font-bold text-center border-l border-gray-300">時間</td>
+                      <td className="bg-gray-100 text-[9px] font-bold text-center border-l border-gray-100">休</td>
+                      <td className="bg-gray-100 text-[9px] font-bold text-center border-l border-gray-100">有</td>
+                    </>
+                  )}
                 </tr>
               </thead>
-              <tbody id="reasonListBody" class="text-sm divide-y divide-border/50"></tbody>
+              <tbody className="divide-y divide-gray-300">
+                {data.staffs.map((staff, sIdx) => {
+                  const isMito = staff.name.includes("みと");
+                  return (
+                    <Fragment key={sIdx}>
+                      {/* 上段：シフト時間 */}
+                      <tr className="row-shift">
+                        <td rowSpan={2} className="name-cell border-b border-gray-400">
+                          {staff.name}
+                        </td>
+                        {datesInRange.map((_, i) => {
+                          const s = staff.shifts[start + i];
+                          const dw = dowsInRange[i];
+                          const bgCls = dw === '日' ? 'bg-red-50' : dw === '土' ? 'bg-blue-50' : '';
+                          
+                          return (
+                            <td key={i} className={`day-cell border-l border-gray-300 text-center ${bgCls}`}>
+                              {formatCellContent(s)}
+                            </td>
+                          );
+                        })}
+                        {showStats && (
+                          <>
+                            <td rowSpan={2} className="bg-slate-50 border-l border-b border-gray-400 text-center align-middle p-1 stats-cell">
+                              {(isMito && parseFloat(staff.total)===0) ? "" : `${staff.total}h`}
+                            </td>
+                            <td rowSpan={2} className="bg-slate-50 border-l border-b border-gray-400 text-center align-middle p-1 stats-cell text-red-600">
+                              {(isMito && staff.holidays===0) ? "" : staff.holidays}
+                            </td>
+                            <td rowSpan={2} className="bg-slate-50 border-l border-b border-gray-400 text-center align-middle p-1 stats-cell text-emerald-600">
+                              {(isMito && staff.paidLeave===0) ? "" : staff.paidLeave}
+                            </td>
+                          </>
+                        )}
+                      </tr>
+                      {/* 下段：メモ */}
+                      <tr className="row-memo border-b border-gray-400">
+                        {datesInRange.map((_, i) => {
+                          const m = staff.memos[start + i];
+                          const dw = dowsInRange[i];
+                          const bgCls = dw === '日' ? 'bg-red-50' : dw === '土' ? 'bg-blue-50' : '';
+                          return (
+                            <td key={i} className={`day-cell border-l border-gray-300 align-top pt-1 ${bgCls}`}>
+                              <span className="memo-text">{m}</span>
+                            </td>
+                          );
+                        })}
+                      </tr>
+                    </Fragment>
+                  );
+                })}
+              </tbody>
             </table>
           </div>
         </div>
-      </div>
-
-      <!-- Detail Table -->
-      <div class="bg-surface border border-border rounded-lg p-5">
-        <div class="flex items-center justify-between mb-4">
-          <h3 class="text-sm font-semibold">直近ログ (Recent Activity)</h3>
-          <span class="text-xs text-secondary">最新100件を表示</span>
-        </div>
-        <div class="overflow-x-auto">
-          <table class="w-full text-left border-collapse" id="dataTable">
-            <thead class="text-[10px] text-secondary uppercase tracking-wider border-b border-border">
-              <tr>
-                <th class="px-4 py-3 font-medium">年月</th>
-                <th class="px-4 py-3 font-medium">氏名</th>
-                <th class="px-4 py-3 font-medium">退会理由</th>
-                <th class="px-4 py-3 font-medium">頻度</th>
-                <th class="px-4 py-3 font-medium text-right">日付</th>
-              </tr>
-            </thead>
-            <tbody class="text-sm divide-y divide-border/50"></tbody>
-          </table>
-        </div>
-      </div>
-    </main>
-  </div>
-
-  <!-- AI Modal -->
-  <div id="aiModal" class="fixed inset-0 z-50 bg-black/80 backdrop-blur-sm hidden items-center justify-center opacity-0 transition-opacity duration-300">
-    <div class="bg-surface border border-border w-full max-w-2xl rounded-xl shadow-2xl transform scale-95 transition-transform duration-300 flex flex-col max-h-[85vh] mx-4" id="aiModalContent">
-      <div class="flex items-center justify-between p-5 border-b border-border">
-        <div class="flex items-center gap-3">
-          <div class="p-2 bg-purple-500/10 rounded-lg">
-            <i class="fas fa-robot text-purple-400"></i>
-          </div>
-          <h3 class="font-bold text-lg">AIインサイト分析レポート</h3>
-        </div>
-        <button onclick="closeAIReport()" class="text-secondary hover:text-white transition-colors text-xl">&times;</button>
-      </div>
-      <div id="aiReportContent" class="p-6 overflow-y-auto leading-relaxed text-gray-300 space-y-4"></div>
-    </div>
-  </div>
-
-  <script>
-    // --- Global State ---
-    let rawData = [];
-    let filteredData = [];
-    let months = []; 
-    
-    // --- Initialization ---
-    window.onload = function() {
-      // Global Chart Config (Japanese Font)
-      Chart.defaults.font.family = "'Noto Sans JP', sans-serif";
-      Chart.defaults.color = '#71717a'; 
-      Chart.defaults.borderColor = '#27272a';
-
-      if (typeof google !== 'undefined' && google.script && google.script.run) {
-        google.script.run
-          .withSuccessHandler(initData)
-          .withFailureHandler(showError)
-          .getMasterData();
-      } else {
-        setTimeout(() => {
-          initData(generateMockData());
-        }, 800);
-      }
-    };
-
-    function initData(data) {
-      if(!data || data.length === 0) {
-        showError("データがありません");
-        return;
-      }
-      rawData = data;
-      document.getElementById('loader').style.display = 'none';
-
-      months = [...new Set(data.map(d => d.yearMonth))].sort().reverse();
-      
-      const startSel = document.getElementById('startMonth');
-      const endSel = document.getElementById('endMonth');
-      startSel.innerHTML = '';
-      endSel.innerHTML = '';
-      
-      months.forEach(m => {
-        startSel.add(new Option(m, m));
-        endSel.add(new Option(m, m));
-      });
-
-      // Default: 3 months
-      const defaultBtn = document.querySelector('.period-btn');
-      if(defaultBtn) togglePeriod(3, defaultBtn);
+      );
     }
 
-    // --- Filter Logic ---
-    function togglePeriod(count, btn) {
-      document.querySelectorAll('.period-btn').forEach(b => {
-        b.classList.remove('active', 'bg-surface', 'text-white', 'font-medium');
-        b.classList.add('text-secondary');
-      });
-
-      if (btn && btn.getAttribute('data-active') === 'true') {
-        btn.setAttribute('data-active', 'false');
-        setPeriodRange(0);
-        return;
-      }
-
-      document.querySelectorAll('.period-btn').forEach(b => b.setAttribute('data-active', 'false'));
-      if (btn) {
-        btn.classList.add('active', 'bg-surface', 'text-white', 'font-medium');
-        btn.classList.remove('text-secondary');
-        btn.setAttribute('data-active', 'true');
-      }
-      setPeriodRange(count);
-    }
-
-    function setPeriodRange(count) {
-      if (count === 0) {
-        applyFilter(months[months.length-1], months[0]);
-        updateSelects(months[months.length-1], months[0]);
-      } else {
-        const end = months[0];
-        const startIndex = Math.min(count - 1, months.length - 1);
-        const start = months[startIndex];
-        applyFilter(start, end);
-        updateSelects(start, end);
-      }
-    }
-
-    function customFilter() {
-      document.querySelectorAll('.period-btn').forEach(b => {
-        b.classList.remove('active', 'bg-surface', 'text-white');
-        b.setAttribute('data-active', 'false');
-      });
-      const s = document.getElementById('startMonth').value;
-      const e = document.getElementById('endMonth').value;
-      applyFilter(s, e);
-    }
-
-    function updateSelects(start, end) {
-      document.getElementById('startMonth').value = start;
-      document.getElementById('endMonth').value = end;
-    }
-
-    function applyFilter(startMonth, endMonth) {
-      if (startMonth > endMonth) [startMonth, endMonth] = [endMonth, startMonth];
-      filteredData = rawData.filter(d => d.yearMonth >= startMonth && d.yearMonth <= endMonth);
-      renderDashboard(filteredData, startMonth, endMonth);
-    }
-
-    // --- Rendering ---
-    let trendChart = null;
-    let currentSortedReasons = [];
-
-    function renderDashboard(data, startM, endM) {
-      const total = data.length;
-      document.getElementById('totalWithdrawals').innerText = total.toLocaleString();
-
-      const reasonCounts = {};
-      data.forEach(d => {
-        const r = d.reason || 'その他';
-        reasonCounts[r] = (reasonCounts[r] || 0) + 1;
-      });
-      const sortedReasons = Object.entries(reasonCounts).sort((a,b) => b[1] - a[1]);
-      currentSortedReasons = sortedReasons;
-
-      const colorMap = {};
-      sortedReasons.forEach((item, i) => {
-        const val = Math.max(50, 255 - (i * 30)); 
-        colorMap[item[0]] = `rgb(${val}, ${val}, ${val})`;
-      });
-
-      if (sortedReasons.length > 0) {
-        const top = sortedReasons[0];
-        document.getElementById('topReason').innerText = top[0];
-        document.getElementById('topReasonShare').innerText = ((top[1] / total) * 100).toFixed(1);
-      } else {
-        document.getElementById('topReason').innerText = "-";
-        document.getElementById('topReasonShare').innerText = "-";
-      }
-
-      const rangeMonths = months.filter(m => m >= startM && m <= endM).sort();
-      const reasonKeys = sortedReasons.map(r => r[0]);
-
-      const datasets = reasonKeys.map(reason => {
-        return {
-          label: reason,
-          data: rangeMonths.map(m => {
-            const mData = data.filter(d => d.yearMonth === m);
-            if (mData.length === 0) return 0;
-            const count = mData.filter(d => (d.reason||'その他') === reason).length;
-            return ((count / mData.length) * 100).toFixed(1);
-          }),
-          backgroundColor: colorMap[reason],
-          borderWidth: 0
-        };
-      });
-
-      const ctx = document.getElementById('trendChart').getContext('2d');
-      if (trendChart) trendChart.destroy();
-      trendChart = new Chart(ctx, {
-        type: 'bar',
-        data: { labels: rangeMonths, datasets: datasets },
-        options: {
-          responsive: true, maintainAspectRatio: false,
-          scales: {
-            x: { stacked: true, grid: { display: false } },
-            y: { stacked: true, min: 0, max: 100, ticks: { callback: v => v + '%' } }
-          },
-          plugins: {
-            legend: { display: false },
-            tooltip: {
-              mode: 'index', intersect: false,
-              backgroundColor: '#18181b',
-              titleColor: '#fff',
-              bodyColor: '#a1a1aa',
-              borderColor: '#27272a',
-              borderWidth: 1,
-              titleFont: {family: 'Noto Sans JP'},
-              bodyFont: {family: 'Noto Sans JP'},
-              callbacks: { label: c => ` ${c.dataset.label}: ${c.raw}%` }
-            }
-          }
-        }
-      });
-
-      const listBody = document.getElementById('reasonListBody');
-      listBody.innerHTML = '';
-      sortedReasons.forEach(item => {
-        const [reason, count] = item;
-        const pct = ((count / total) * 100).toFixed(1);
-        const color = colorMap[reason];
-        
-        listBody.innerHTML += `
-          <tr class="group hover:bg-zinc-800/50 transition-colors">
-            <td class="py-2.5 pr-2">
-              <div class="flex items-center gap-2">
-                <span class="w-2 h-2 rounded-full" style="background:${color}"></span>
-                <span class="text-sm text-gray-300 group-hover:text-white truncate">${reason}</span>
-              </div>
-              <div class="w-full bg-zinc-800 h-1 mt-1.5 rounded-full overflow-hidden">
-                <div class="h-full rounded-full" style="width:${pct}%; background:${color}"></div>
-              </div>
-            </td>
-            <td class="py-2.5 text-right font-mono text-zinc-400 group-hover:text-white">${count}</td>
-            <td class="py-2.5 text-right font-mono text-white font-medium">${pct}%</td>
-          </tr>
-        `;
-      });
-
-      if (rangeMonths.length >= 2) {
-        const last = rangeMonths[rangeMonths.length - 1];
-        const prev = rangeMonths[rangeMonths.length - 2];
-        const lData = data.filter(d => d.yearMonth === last);
-        const pData = data.filter(d => d.yearMonth === prev);
-        
-        let maxDiff = -Infinity, surgeReason = "変化なし";
-        
-        reasonKeys.forEach(r => {
-          const lShare = lData.length ? (lData.filter(d=>(d.reason||'')===r).length / lData.length)*100 : 0;
-          const pShare = pData.length ? (pData.filter(d=>(d.reason||'')===r).length / pData.length)*100 : 0;
-          const diff = lShare - pShare;
-          if (diff > maxDiff && diff > 0) { maxDiff = diff; surgeReason = r; }
-        });
-
-        if (maxDiff > 0) {
-          document.getElementById('surgingReason').innerText = surgeReason;
-          document.getElementById('surgingTrend').innerHTML = `<span class="text-xs text-red-400 font-medium">▲ +${maxDiff.toFixed(1)}pt シェア拡大</span>`;
-        } else {
-          document.getElementById('surgingReason').innerText = "安定";
-          document.getElementById('surgingTrend').innerText = "顕著な急増なし";
-        }
-      }
-
-      const tBody = document.querySelector('#dataTable tbody');
-      tBody.innerHTML = '';
-      data.slice(0, 50).forEach(d => {
-        tBody.innerHTML += `
-          <tr class="hover:bg-zinc-800/50 transition-colors group">
-            <td class="px-4 py-3 text-zinc-400 group-hover:text-white">${d.yearMonth}</td>
-            <td class="px-4 py-3 text-white font-medium">${d.name}</td>
-            <td class="px-4 py-3 text-zinc-400">${d.reason}</td>
-            <td class="px-4 py-3 text-zinc-400">${d.frequency}</td>
-            <td class="px-4 py-3 text-right text-zinc-500 text-xs font-mono">${d.timestamp || '-'}</td>
-          </tr>
-        `;
-      });
-    }
-
-    // --- AI Report ---
-    function openAIReport() {
-      const modal = document.getElementById('aiModal');
-      const content = document.getElementById('aiModalContent');
-      const text = document.getElementById('aiReportContent');
-      
-      modal.classList.remove('hidden');
-      requestAnimationFrame(() => {
-        modal.classList.remove('opacity-0');
-        content.classList.remove('scale-95');
-      });
-
-      text.innerHTML = `
-        <div class="flex flex-col items-center justify-center py-12 space-y-4">
-          <div class="w-8 h-8 border-2 border-zinc-700 border-t-purple-500 rounded-full animate-spin"></div>
-          <div class="text-sm text-zinc-400 animate-pulse">データを分析中...</div>
-        </div>
-      `;
-      
-      setTimeout(() => {
-        text.innerHTML = generateAIContent(filteredData);
-      }, 1000);
-    }
-
-    function closeAIReport() {
-      const modal = document.getElementById('aiModal');
-      const content = document.getElementById('aiModalContent');
-      
-      modal.classList.add('opacity-0');
-      content.classList.add('scale-95');
-      setTimeout(() => modal.classList.add('hidden'), 300);
-    }
-
-    function generateAIContent(data) {
-      if(!data.length) return "データがありません。";
-      const top = currentSortedReasons[0];
-      return `
-        <div class="space-y-6">
-          <div class="bg-zinc-900/50 p-4 rounded-lg border border-zinc-800">
-            <h4 class="text-sm font-bold text-white uppercase tracking-wider mb-2">エグゼクティブサマリー</h4>
-            <p class="text-sm">
-              現在、退会の最大要因は <strong class="text-white">「${top ? top[0] : 'なし'}」</strong> であり、
-              選択された期間全体の <strong class="text-white">${top ? ((top[1]/data.length)*100).toFixed(1) : 0}%</strong> を占めています。
-              この要因に対する対策が、最も費用対効果の高い退会抑止策となります。
-            </p>
-          </div>
-          
-          <div>
-            <h4 class="text-sm font-bold text-zinc-400 uppercase tracking-wider mb-2">推奨アクション</h4>
-            <ul class="space-y-3">
-              <li class="flex gap-3 text-sm">
-                <span class="w-1.5 h-1.5 mt-1.5 rounded-full bg-green-500 shrink-0"></span>
-                <span><strong>「${top ? top[0] : ''}」</strong> を理由とする会員への優先的なヒアリングを実施し、根本原因を特定してください。</span>
-              </li>
-              <li class="flex gap-3 text-sm">
-                <span class="w-1.5 h-1.5 mt-1.5 rounded-full bg-blue-500 shrink-0"></span>
-                <span>「月次シェア推移」グラフを注視してください。明るい色（上位理由）のバーが縦に拡大している場合、その問題が相対的に悪化していることを示します。</span>
-              </li>
-            </ul>
-          </div>
-        </div>
-      `;
-    }
-
-    function exportData() {
-      if (typeof google !== 'undefined' && google.script) {
-        google.script.run
-          .withSuccessHandler(sn => alert(`出力完了: ${sn}`))
-          .saveReportToSheet(filteredData);
-      } else {
-        alert("プレビューモード: 出力不可");
-      }
-    }
-
-    function showError(msg) {
-      document.getElementById('loader').innerHTML = `<div class="text-red-500 font-mono text-sm">${msg}</div>`;
-    }
-
-    function generateMockData() {
-      const reasons = ["引越し・転勤", "仕事の都合", "金銭的理由", "家庭の事情", "他クラブ移籍", "飽きた・モチベーション低下", "健康上の理由"];
-      const m = ["2025年10月", "2025年11月", "2025年12月", "2026年01月", "2026年02月"];
-      let d = [];
-      for(let i=0; i<150; i++) {
-        const mm = m[Math.floor(Math.random()*m.length)];
-        let r = Math.random() > 0.6 && mm === "2026年02月" ? "仕事の都合" : reasons[Math.floor(Math.random()*reasons.length)];
-        d.push({
-          yearMonth: mm, name: "サンプル会員 "+i, reason: r, frequency: "週2回", timestamp: "2026/02/19"
-        });
-      }
-      return d;
-    }
+    const root = ReactDOM.createRoot(document.getElementById('root'));
+    root.render(<App />);
   </script>
 </body>
 </html>
